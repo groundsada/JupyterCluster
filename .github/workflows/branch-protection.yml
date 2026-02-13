@@ -19,27 +19,16 @@ jobs:
             exit 1
           fi
       
-      - name: Validate commit message
-        uses: amannn/action-semantic-pull-request@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          types: |
-            feat
-            fix
-            docs
-            style
-            refactor
-            test
-            chore
-          scopes: |
-            auth
-            api
-            spawner
-            helm
-            k8s
-            docs
-            ci
+      - name: Validate commit message format
+        run: |
+          # Basic commit message validation (semantic PR action only works on PRs)
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          if [[ ! "$COMMIT_MSG" =~ ^(feat|fix|docs|style|refactor|test|chore)(\([^)]+\))?: ]]; then
+            echo "Commit message should follow format: type(scope): description"
+            echo "Types: feat, fix, docs, style, refactor, test, chore"
+            echo "Current message: $COMMIT_MSG"
+            exit 1
+          fi
 
   enforce-standards:
     name: Enforce Code Standards
@@ -59,7 +48,7 @@ jobs:
       
       - name: Run all tests
         run: |
-          pytest tests/ -v --cov=jupytercluster --cov-report=term-missing
+          pytest tests/ -v --cov=jupytercluster --cov-report=term-missing --cov-report=xml
       
       - name: Check code coverage
         run: |
