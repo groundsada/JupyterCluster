@@ -21,16 +21,16 @@ class HubInstance(LoggingConfigurable):
     namespace = Unicode()
     owner = Unicode()
     helm_release_name = Unicode()
-    
+
     # Configuration
     helm_chart = Unicode("jupyterhub/jupyterhub")
     helm_chart_version = Unicode("")
     values = TraitDict()
-    
+
     # Status
     status = Unicode("pending")  # pending, running, stopped, error
     url = Unicode("")
-    
+
     # Metadata
     created = Instance(datetime)
     last_activity = Instance(datetime)

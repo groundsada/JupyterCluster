@@ -220,10 +220,10 @@ class HubSpawner(LoggingConfigurable):
             # Check if Helm release exists by checking for hub pods
             pods = self.core_v1.list_namespaced_pod(namespace=self.namespace)
             hub_pods = [p for p in pods.items if "jupyterhub" in p.metadata.name.lower()]
-            
+
             if not hub_pods:
                 return 1  # No hub pods, consider it stopped
-            
+
             # Check if any pod is running
             running = any(
                 p.status.phase == "Running"
@@ -383,12 +383,12 @@ class HubSpawner(LoggingConfigurable):
     async def _wait_for_hub_ready(self) -> str:
         """Wait for hub to be ready and return its URL"""
         self.log.info(f"Waiting for hub {self.hub_name} to be ready...")
-        
+
         # Wait for proxy service to be ready
         max_wait = self.start_timeout
         wait_interval = 5
         elapsed = 0
-        
+
         while elapsed < max_wait:
             try:
                 # Check for proxy service
@@ -398,7 +398,7 @@ class HubSpawner(LoggingConfigurable):
                     if "proxy" in svc.metadata.name.lower() or "hub" in svc.metadata.name.lower():
                         proxy_service = svc
                         break
-                
+
                 if proxy_service:
                     # Check for ingress or construct URL from service
                     # Try to get ingress first
@@ -413,7 +413,7 @@ class HubSpawner(LoggingConfigurable):
                                 return f"https://{host}"
                     except:
                         pass
-                    
+
                     # Fallback: construct from service
                     # In production, you'd configure ingress properly
                     return (

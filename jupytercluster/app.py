@@ -238,20 +238,20 @@ class JupyterCluster(Application):
         """Delete a hub instance"""
         if name not in self.hubs:
             raise ValueError(f"Hub {name} not found")
-        
+
         hub = self.hubs[name]
-        
+
         # Stop hub if running
         if hub.status == "running":
             await hub.stop()
-        
+
         # Delete from database
         self.db.delete(hub.orm_hub)
         self.db.commit()
-        
+
         # Remove from cache
         del self.hubs[name]
-        
+
         logger.info(f"Deleted hub {name}")
 
     def _is_valid_namespace_name(self, name: str) -> bool:

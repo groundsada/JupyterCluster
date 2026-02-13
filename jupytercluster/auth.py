@@ -83,7 +83,7 @@ class OAuthenticatorWrapper(Authenticator):
             module_path, class_name = self.oauthenticator_class.rsplit(".", 1)
             module = __import__(module_path, fromlist=[class_name])
             oa_class = getattr(module, class_name)
-            
+
             # Create instance with config
             self._oa = oa_class(parent=self)
         return self._oa
@@ -110,11 +110,11 @@ class OAuthenticatorWrapper(Authenticator):
         # OAuthenticator provides its own handlers
         # We need to wrap them to work with JupyterCluster
         handlers = []
-        
+
         # OAuthenticator typically provides login and oauth_callback handlers
         # We'll need to create wrapper handlers that integrate with JupyterCluster
         # For now, return empty - this will be implemented in the handlers
-        
+
         return handlers
 
 
