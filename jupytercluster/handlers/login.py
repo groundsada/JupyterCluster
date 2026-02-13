@@ -42,8 +42,10 @@ class LoginHandler(BaseHandler):
             return
 
         # Authenticate
-        authenticated_user = self.jupytercluster.authenticator.authenticate(username, password)
-        
+        authenticated_user = self.jupytercluster.authenticator.authenticate(
+            username, password
+        )
+
         if authenticated_user:
             # Set secure cookie
             self.set_secure_cookie("jupytercluster_user", authenticated_user)
@@ -61,10 +63,10 @@ class LogoutHandler(BaseHandler):
         """Log out user"""
         if self.current_user:
             self.log.info(f"User logged out: {self.current_user}")
-        
+
         # Clear cookie
         self.clear_cookie("jupytercluster_user")
-        
+
         # Redirect to login
         self.redirect("/login")
 

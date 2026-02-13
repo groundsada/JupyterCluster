@@ -35,7 +35,7 @@ class Authenticator(LoggingConfigurable):
 
     def get_handlers(self, app) -> List[Tuple[str, type]]:
         """Get OAuth handlers if this is an OAuth authenticator
-        
+
         Returns:
             List of (path, handler_class) tuples
         """
@@ -44,7 +44,7 @@ class Authenticator(LoggingConfigurable):
 
 class SimpleAuthenticator(Authenticator):
     """Simple authenticator for development/testing
-    
+
     In production, use OAuth, LDAP, or other authenticators
     """
 
@@ -62,7 +62,7 @@ class SimpleAuthenticator(Authenticator):
 
 class OAuthenticatorWrapper(Authenticator):
     """Wrapper for OAuthenticator from oauthenticator package
-    
+
     This allows JupyterCluster to use any OAuth provider supported by OAuthenticator
     """
 
@@ -98,11 +98,11 @@ class OAuthenticatorWrapper(Authenticator):
         # Check both our admin_users and OAuthenticator's admin_users
         if super().is_admin(username):
             return True
-        
+
         # Check OAuthenticator's admin_users if it has that attribute
         if hasattr(self.oauthenticator, "admin_users"):
             return username in getattr(self.oauthenticator, "admin_users", set())
-        
+
         return False
 
     def get_handlers(self, app) -> List[Tuple[str, type]]:
@@ -127,12 +127,12 @@ class Scope:
     HUBS_CREATE = "hubs:create"
     HUBS_UPDATE = "hubs:update"
     HUBS_DELETE = "hubs:delete"
-    
+
     # Admin scopes
     ADMIN_ALL = "admin"
     ADMIN_HUBS = "admin:hubs"
     ADMIN_USERS = "admin:users"
-    
+
     # User scopes
     SELF = "self"  # Access to own resources
 

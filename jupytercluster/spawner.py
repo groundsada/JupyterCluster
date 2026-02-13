@@ -83,7 +83,7 @@ class HubSpawner(LoggingConfigurable):
         self.namespace = namespace  # CRITICAL: This is enforced and cannot be changed
         self.owner = owner
         self.helm_release_name = f"jupyterhub-{hub_name}"
-        
+
         # Initialize Kubernetes client
         self._init_k8s_client()
 
@@ -103,34 +103,34 @@ class HubSpawner(LoggingConfigurable):
 
     def _validate_helm_values(self, values: Dict) -> Dict:
         """Validate and sanitize Helm values to prevent security issues
-        
+
         CRITICAL SECURITY: This prevents users from:
         - Overriding namespace
         - Modifying RBAC to gain cluster-admin
         - Accessing other namespaces
         - Setting privileged security contexts
-        
+
         Args:
             values: User-provided Helm values
-            
+
         Returns:
             Sanitized values dict
         """
         sanitized = {}
-        
+
         # Only allow whitelisted top-level keys
         for key in values:
             if key in self.allowed_helm_keys:
                 sanitized[key] = values[key]
             else:
                 self.log.warning(f"Rejected Helm key: {key} (not in whitelist)")
-        
+
         # CRITICAL: Remove any namespace overrides
         # Ensure namespace is always set to self.namespace
         if "namespace" in sanitized:
             self.log.warning("Removed user-provided namespace override")
             del sanitized["namespace"]
-        
+
         # Remove dangerous RBAC modifications
         if "rbac" in sanitized:
             rbac = sanitized["rbac"]
@@ -140,7 +140,7 @@ class HubSpawner(LoggingConfigurable):
                 if "clusterRoleBindings" in rbac:
                     self.log.warning("Removed clusterRoleBindings from user values")
                     del rbac["clusterRoleBindings"]
-        
+
         # Remove security context overrides that could allow privilege escalation
         if "singleuser" in sanitized:
             singleuser = sanitized["singleuser"]
@@ -149,11 +149,17 @@ class HubSpawner(LoggingConfigurable):
                 if "securityContext" in singleuser:
                     sc = singleuser["securityContext"]
                     if isinstance(sc, dict):
-                        for dangerous_key in ["privileged", "allowPrivilegeEscalation", "capabilities"]:
+                        for dangerous_key in [
+                            "privileged",
+                            "allowPrivilegeEscalation",
+                            "capabilities",
+                        ]:
                             if dangerous_key in sc:
-                                self.log.warning(f"Removed dangerous securityContext.{dangerous_key}")
+                                self.log.warning(
+                                    f"Removed dangerous securityContext.{dangerous_key}"
+                                )
                                 del sc[dangerous_key]
-        
+
         return sanitized
 
     async def start(self, values: Optional[Dict] = None) -> Tuple[str, str]:
@@ -176,7 +182,7 @@ class HubSpawner(LoggingConfigurable):
             # CRITICAL: Validate and sanitize user-provided values
             sanitized_values = self._validate_helm_values(values)
             merged_values.update(sanitized_values)
-        
+
         # CRITICAL: Force namespace to be self.namespace (cannot be overridden)
         # This ensures users cannot deploy to other namespaces
         merged_values["namespace"] = self.namespace
@@ -220,11 +226,11 @@ class HubSpawner(LoggingConfigurable):
             
             # Check if any pod is running
             running = any(
-                p.status.phase == "Running" 
-                for p in hub_pods 
+                p.status.phase == "Running"
+                for p in hub_pods
                 if p.status.phase in ["Running", "Pending"]
             )
-            
+
             return None if running else 1
 
         except Exception as e:
@@ -263,17 +269,20 @@ class HubSpawner(LoggingConfigurable):
 
     async def _deploy_helm_release(self, values: Dict):
         """Deploy Helm release using helm CLI (via subprocess)"""
-        self.log.info(f"Deploying Helm release {self.helm_release_name} with chart {self.helm_chart}")
-        
+        self.log.info(
+            f"Deploying Helm release {self.helm_release_name} with chart {self.helm_chart}"
+        )
+
         # Ensure Helm repo is added
         await self._ensure_helm_repo()
-        
+
         # Create temporary values file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             import yaml
+
             yaml.dump(values, f)
             values_file = f.name
-        
+
         try:
             # Build helm upgrade --install command
             cmd = [
@@ -282,37 +291,41 @@ class HubSpawner(LoggingConfigurable):
                 "--install",
                 self.helm_release_name,
                 self.helm_chart,
-                "--namespace", self.namespace,
+                "--namespace",
+                self.namespace,
                 "--create-namespace",
-                "--values", values_file,
+                "--values",
+                values_file,
             ]
-            
+
             # Add chart version if specified
             if self.helm_chart_version:
                 cmd.extend(["--version", self.helm_chart_version])
-            
+
             # Add repo if chart doesn't contain /
             if "/" not in self.helm_chart:
                 cmd.extend(["--repo", self.helm_repo_url])
-            
+
             self.log.debug(f"Running: {' '.join(cmd)}")
-            
+
             # Run helm command
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            
+
             stdout, stderr = await process.communicate()
-            
+
             if process.returncode != 0:
                 error_msg = stderr.decode() if stderr else stdout.decode()
                 self.log.error(f"Helm deployment failed: {error_msg}")
                 raise RuntimeError(f"Helm deployment failed: {error_msg}")
-            
-            self.log.info(f"Helm release {self.helm_release_name} deployed successfully")
-            
+
+            self.log.info(
+                f"Helm release {self.helm_release_name} deployed successfully"
+            )
+
         finally:
             # Clean up temp file
             Path(values_file).unlink(missing_ok=True)
@@ -321,16 +334,16 @@ class HubSpawner(LoggingConfigurable):
         """Ensure Helm repository is added"""
         repo_name = "jupyterhub"
         cmd = ["helm", "repo", "add", repo_name, self.helm_repo_url]
-        
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        
+
         await process.communicate()
         # Ignore error if repo already exists
-        
+
         # Update repo
         cmd = ["helm", "repo", "update", repo_name]
         process = await asyncio.create_subprocess_exec(
@@ -343,22 +356,23 @@ class HubSpawner(LoggingConfigurable):
     async def _delete_helm_release(self):
         """Delete Helm release"""
         self.log.info(f"Deleting Helm release {self.helm_release_name}")
-        
+
         cmd = [
             "helm",
             "uninstall",
             self.helm_release_name,
-            "--namespace", self.namespace,
+            "--namespace",
+            self.namespace,
         ]
-        
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        
+
         stdout, stderr = await process.communicate()
-        
+
         if process.returncode != 0:
             error_msg = stderr.decode() if stderr else stdout.decode()
             # Ignore "release not found" errors
@@ -402,18 +416,23 @@ class HubSpawner(LoggingConfigurable):
                     
                     # Fallback: construct from service
                     # In production, you'd configure ingress properly
-                    return f"http://{proxy_service.metadata.name}.{self.namespace}.svc.cluster.local"
-                
+                    return (
+                        f"http://{proxy_service.metadata.name}."
+                        f"{self.namespace}.svc.cluster.local"
+                    )
+
                 await asyncio.sleep(wait_interval)
                 elapsed += wait_interval
-                
+
             except Exception as e:
                 self.log.debug(f"Waiting for hub... ({elapsed}s/{max_wait}s)")
                 await asyncio.sleep(wait_interval)
                 elapsed += wait_interval
-        
+
         # Timeout - return placeholder
-        self.log.warning(f"Hub not ready after {max_wait}s, returning placeholder URL")
+        self.log.warning(
+            f"Hub not ready after {max_wait}s, returning placeholder URL"
+        )
         return f"https://{self.hub_name}.example.com"
 
     def get_state(self) -> Dict:

@@ -47,7 +47,7 @@ class HubInstance(LoggingConfigurable):
         self.orm_hub = orm_hub
         self.spawner_class = spawner_class
         self.spawner = None
-        
+
         # Load attributes from ORM
         self._load_from_orm()
 
@@ -88,26 +88,26 @@ class HubInstance(LoggingConfigurable):
     async def start(self, values: Optional[Dict] = None):
         """Start the hub instance"""
         self.log.info(f"Starting hub {self.name}")
-        
+
         # Merge values
         merged_values = {**self.values}
         if values:
             merged_values.update(values)
-        
+
         # Update status
         self.status = "pending"
         self._save_to_orm()
-        
+
         try:
             spawner = self.get_spawner()
             namespace, url = await spawner.start(values=merged_values)
-            
+
             # Update status and URL
             self.status = "running"
             self.url = url
             self.last_activity = datetime.utcnow()
             self._save_to_orm()
-            
+
             self.log.info(f"Hub {self.name} started successfully at {url}")
         except Exception as e:
             self.log.error(f"Failed to start hub {self.name}: {e}")
@@ -118,14 +118,14 @@ class HubInstance(LoggingConfigurable):
     async def stop(self):
         """Stop the hub instance"""
         self.log.info(f"Stopping hub {self.name}")
-        
+
         try:
             spawner = self.get_spawner()
             await spawner.stop()
-            
+
             self.status = "stopped"
             self._save_to_orm()
-            
+
             self.log.info(f"Hub {self.name} stopped successfully")
         except Exception as e:
             self.log.error(f"Failed to stop hub {self.name}: {e}")

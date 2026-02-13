@@ -24,7 +24,7 @@ class HomeHandler(BaseHandler):
         for hub_name, hub in app.hubs.items():
             hub_dict = hub.to_dict()
             all_hubs.append(hub_dict)
-            
+
             # Filter by ownership unless admin
             if self.is_admin or hub.owner == user:
                 user_hubs.append(hub_dict)

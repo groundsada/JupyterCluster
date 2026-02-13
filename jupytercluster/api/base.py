@@ -61,11 +61,11 @@ class APIHandler(web.RequestHandler):
         current_user = self.get_current_user()
         if not current_user:
             return False
-        
+
         # Admins can manage all hubs
         if self.is_admin():
             return True
-        
+
         # Users can manage their own hubs
         return current_user == hub_owner
 

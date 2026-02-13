@@ -19,17 +19,19 @@ class HubListAPIHandler(APIHandler):
         is_admin = self.is_admin()
 
         # Get hubs from application
-        app = self.application
+        app = self.application.settings.get("jupytercluster")
+        if not app:
+            raise web.HTTPError(500, "JupyterCluster application not found")
         hubs = []
 
         # Filter based on permissions
         for hub in app.hubs.values():
             hub_dict = hub.to_dict()
-            
+
             # Users can only see their own hubs unless admin
             if not is_admin and hub.owner != current_user:
                 continue
-            
+
             hubs.append(hub_dict)
 
         self.write({"hubs": hubs})
@@ -40,16 +42,18 @@ class HubAPIHandler(APIHandler):
 
     async def get(self, hub_name: str):
         """GET /api/hubs/:name - Get hub details"""
-        app = self.application
-        
+        app = self.application.settings.get("jupytercluster")
+        if not app:
+            raise web.HTTPError(500, "JupyterCluster application not found")
+
         if hub_name not in app.hubs:
             raise web.HTTPError(404, f"Hub {hub_name} not found")
-        
+
         hub = app.hubs[hub_name]
-        
+
         # Check permission
         self.require_hub_permission(hub.owner)
-        
+
         self.write(hub.to_dict())
 
     async def post(self, hub_name: str):
@@ -58,8 +62,10 @@ class HubAPIHandler(APIHandler):
         if not current_user:
             raise web.HTTPError(401, "Authentication required")
 
-        app = self.application
-        
+        app = self.application.settings.get("jupytercluster")
+        if not app:
+            raise web.HTTPError(500, "JupyterCluster application not found")
+
         # Check if hub already exists
         if hub_name in app.hubs:
             raise web.HTTPError(409, f"Hub {hub_name} already exists")
@@ -77,7 +83,7 @@ class HubAPIHandler(APIHandler):
                 values=values,
                 description=description,
             )
-            
+
             self.set_status(201)
             self.write(hub.to_dict())
         except Exception as e:
@@ -86,16 +92,18 @@ class HubAPIHandler(APIHandler):
 
     async def delete(self, hub_name: str):
         """DELETE /api/hubs/:name - Delete a hub"""
-        app = self.application
-        
+        app = self.application.settings.get("jupytercluster")
+        if not app:
+            raise web.HTTPError(500, "JupyterCluster application not found")
+
         if hub_name not in app.hubs:
             raise web.HTTPError(404, f"Hub {hub_name} not found")
-        
+
         hub = app.hubs[hub_name]
-        
+
         # Check permission
         self.require_hub_permission(hub.owner)
-        
+
         try:
             await app.delete_hub(hub_name)
             self.set_status(204)
@@ -109,16 +117,18 @@ class HubActionAPIHandler(APIHandler):
 
     async def post(self, hub_name: str, action: str):
         """POST /api/hubs/:name/:action - Perform action on hub"""
-        app = self.application
-        
+        app = self.application.settings.get("jupytercluster")
+        if not app:
+            raise web.HTTPError(500, "JupyterCluster application not found")
+
         if hub_name not in app.hubs:
             raise web.HTTPError(404, f"Hub {hub_name} not found")
-        
+
         hub = app.hubs[hub_name]
-        
+
         # Check permission
         self.require_hub_permission(hub.owner)
-        
+
         try:
             if action == "start":
                 await hub.start()

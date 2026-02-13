@@ -55,7 +55,7 @@ class BaseHandler(web.RequestHandler):
         kwargs.setdefault("is_admin", self.is_admin)
         kwargs.setdefault("login_url", "/login")
         kwargs.setdefault("logout_url", "/logout")
-        
+
         # Render template
         return self.render(name, **kwargs)
 

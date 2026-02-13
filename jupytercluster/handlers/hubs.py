@@ -18,7 +18,7 @@ class HubCreateHandler(BaseHandler):
         user = self.get_user_or_redirect()
         if not user:
             return
-        
+
         self.render_template("hub_create.html")
 
     async def post(self):
@@ -48,12 +48,11 @@ class HubCreateHandler(BaseHandler):
             return
 
         app = self.jupytercluster
-        
+
         # Check if hub already exists
         if hub_name in app.hubs:
             self.render_template(
-                "hub_create.html",
-                error=f"Hub {hub_name} already exists"
+                "hub_create.html", error=f"Hub {hub_name} already exists"
             )
             return
 
@@ -65,7 +64,7 @@ class HubCreateHandler(BaseHandler):
                 values=values,
                 description=description,
             )
-            
+
             # Redirect to hub page
             self.redirect(f"/hubs/{hub_name}")
         except Exception as e:
@@ -86,16 +85,16 @@ class HubDetailHandler(BaseHandler):
             return
 
         app = self.jupytercluster
-        
+
         if hub_name not in app.hubs:
             raise web.HTTPError(404, f"Hub {hub_name} not found")
-        
+
         hub = app.hubs[hub_name]
-        
+
         # Check permission
         if not self.is_admin and hub.owner != user:
             raise web.HTTPError(403, "Permission denied")
-        
+
         self.render_template("hub_detail.html", hub=hub.to_dict())
 
     async def post(self, hub_name: str):
@@ -105,18 +104,18 @@ class HubDetailHandler(BaseHandler):
             return
 
         app = self.jupytercluster
-        
+
         if hub_name not in app.hubs:
             raise web.HTTPError(404, f"Hub {hub_name} not found")
-        
+
         hub = app.hubs[hub_name]
-        
+
         # Check permission
         if not self.is_admin and hub.owner != user:
             raise web.HTTPError(403, "Permission denied")
-        
+
         action = self.get_argument("action", "")
-        
+
         try:
             if action == "start":
                 await hub.start()
@@ -128,7 +127,7 @@ class HubDetailHandler(BaseHandler):
                 return
             else:
                 raise web.HTTPError(400, f"Unknown action: {action}")
-            
+
             # Redirect back to hub page
             self.redirect(f"/hubs/{hub_name}")
         except Exception as e:

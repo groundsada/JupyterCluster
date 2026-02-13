@@ -70,17 +70,17 @@ class JupyterCluster(Application):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
+
         # Initialize database
         self._init_database()
-        
+
         # Initialize authenticator
         self._init_authenticator()
-        
+
         # Load hubs from database
         self.hubs: Dict[str, HubInstance] = {}
         self._load_hubs()
-        
+
         # Initialize web application
         self._init_web_app()
 
@@ -95,7 +95,7 @@ class JupyterCluster(Application):
         """Initialize authenticator"""
         authenticator_class = self._load_class(self.authenticator_class, Authenticator)
         self.authenticator = authenticator_class(parent=self)
-    
+
     def _load_class(self, class_path, base_class):
         """Load a class by path"""
         module_path, class_name = class_path.rsplit(".", 1)
@@ -122,7 +122,7 @@ class JupyterCluster(Application):
         here = os.path.dirname(os.path.dirname(__file__))
         template_path = os.path.join(here, "templates")
         static_path = os.path.join(here, "static")
-        
+
         handlers = [
             # Web UI
             (r"/", HomeHandler),
@@ -131,23 +131,25 @@ class JupyterCluster(Application):
             (r"/logout", LogoutHandler),
             (r"/hubs/create", HubCreateHandler),
             (r"/hubs/([^/]+)", HubDetailHandler),
-            
             # OAuth handlers
-            (r"/oauth_login", OAuthLoginHandler) if OAuthCallbackHandler else (r"/oauth_login", web.ErrorHandler, {"status_code": 404}),
-            (r"/oauth_callback", OAuthCallbackHandler) if OAuthCallbackHandler else (r"/oauth_callback", web.ErrorHandler, {"status_code": 404}),
-            
+            (r"/oauth_login", OAuthLoginHandler)
+            if OAuthLoginHandler
+            else (r"/oauth_login", web.ErrorHandler, {"status_code": 404}),
+            (r"/oauth_callback", OAuthCallbackHandler)
+            if OAuthCallbackHandler
+            else (r"/oauth_callback", web.ErrorHandler, {"status_code": 404}),
             # API
             (r"/api/hubs", HubListAPIHandler),
             (r"/api/hubs/([^/]+)", HubAPIHandler),
             (r"/api/hubs/([^/]+)/(start|stop)", HubActionAPIHandler),
             (r"/api/health", HealthHandler),
         ]
-        
+
         # Add OAuth handlers if using OAuthenticator
         if isinstance(self.authenticator, OAuthenticatorWrapper):
             oauth_handlers = self.authenticator.get_handlers(self)
             handlers.extend(oauth_handlers)
-        
+
         settings = {
             "cookie_secret": os.urandom(32).hex(),
             "login_url": "/login",
@@ -158,7 +160,7 @@ class JupyterCluster(Application):
             "xsrf_cookies": True,
             "autoescape": "xhtml_escape",
         }
-        
+
         self.web_app = web.Application(handlers, **settings)
         self.web_app.settings["jupytercluster"] = self
 
@@ -170,8 +172,8 @@ class JupyterCluster(Application):
         description: str = "",
     ) -> HubInstance:
         """Create a new hub instance
-        
-        SECURITY: 
+
+        SECURITY:
         - Namespace is derived from hub name, not user input
         - Values are validated and sanitized in HubSpawner
         - Owner is stored and used for permission checks
@@ -179,31 +181,37 @@ class JupyterCluster(Application):
         # CRITICAL: Generate namespace from hub name (not user input)
         # This ensures users cannot deploy to arbitrary namespaces
         namespace = f"{self.default_namespace_prefix}{name}"
-        
+
         # Validate namespace name (Kubernetes requirements)
         if not self._is_valid_namespace_name(namespace):
             raise ValueError(f"Invalid namespace name: {namespace}")
-        
+
         # Check if namespace already exists (one hub per namespace)
         if namespace in [h.namespace for h in self.hubs.values()]:
             raise ValueError(f"Namespace {namespace} already in use")
-        
+
         # Check user's hub limit (if configured)
         user_hubs = [h for h in self.hubs.values() if h.owner == owner]
         # Get user from database to check limits
         user = self.db.query(orm.User).filter_by(name=owner).first()
         if user and user.max_hubs and len(user_hubs) >= user.max_hubs:
-            raise ValueError(f"User {owner} has reached maximum hub limit of {user.max_hubs}")
-        
+            raise ValueError(
+                f"User {owner} has reached maximum hub limit of {user.max_hubs}"
+            )
+
         # Validate namespace prefix restrictions (if configured)
         if user and user.allowed_namespace_prefixes:
-            allowed = any(namespace.startswith(prefix) for prefix in user.allowed_namespace_prefixes)
+            allowed = any(
+                namespace.startswith(prefix) for prefix in user.allowed_namespace_prefixes
+            )
             if not allowed:
-                raise ValueError(f"User {owner} is not allowed to deploy to namespace {namespace}")
-        
+                raise ValueError(
+                    f"User {owner} is not allowed to deploy to namespace {namespace}"
+                )
+
         # Generate Helm release name
         helm_release_name = f"jupyterhub-{name}"
-        
+
         # Create ORM object
         orm_hub = orm.Hub(
             name=name,
@@ -215,14 +223,14 @@ class JupyterCluster(Application):
             description=description,
             status="pending",
         )
-        
+
         self.db.add(orm_hub)
         self.db.commit()
-        
+
         # Create HubInstance
         hub = HubInstance(orm_hub)
         self.hubs[name] = hub
-        
+
         logger.info(f"Created hub {name} for owner {owner}")
         return hub
 
