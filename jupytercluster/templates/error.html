@@ -1,0 +1,16 @@
+{% extends "page.html" %}
+{% block title %}Error - JupyterCluster{% endblock %}
+{% block main %}
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <div class="alert alert-danger">
+          <h2>Error {{ status_code }}</h2>
+          <p>{{ error_message or "An error occurred" }}</p>
+          <a href="{{ base_url }}home" class="btn btn-primary">Go Home</a>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock main %}
+

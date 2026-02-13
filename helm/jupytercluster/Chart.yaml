@@ -1,0 +1,14 @@
+apiVersion: v2
+name: jupytercluster
+description: Multi-hub management system for JupyterHub on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - jupyter
+  - jupyterhub
+  - kubernetes
+  - multi-tenant
+maintainers:
+  - name: JupyterCluster Contributors
+

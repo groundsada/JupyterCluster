@@ -1,0 +1,8 @@
+tornado>=6.0
+sqlalchemy>=1.4
+traitlets>=5.0
+kubernetes>=24.0
+pyyaml>=6.0
+jinja2>=3.0
+oauthenticator>=16.0
+

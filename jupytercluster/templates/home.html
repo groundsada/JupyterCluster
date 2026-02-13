@@ -1,0 +1,73 @@
+{% extends "page.html" %}
+{% block title %}Home - JupyterCluster{% endblock %}
+{% block main %}
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <h1>My Hubs</h1>
+        {% if is_admin %}
+          <p class="text-muted">You are an administrator. You can see and manage all hubs.</p>
+        {% else %}
+          <p class="text-muted">Manage your JupyterHub instances.</p>
+        {% endif %}
+      </div>
+    </div>
+    
+    <div class="row mt-4">
+      <div class="col-12">
+        <a href="{{ base_url }}hubs/create" class="btn btn-primary mb-3">
+          <i class="fa fa-plus"></i> Create New Hub
+        </a>
+      </div>
+    </div>
+
+    {% if hubs %}
+      <div class="row">
+        {% for hub in hubs %}
+          <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card">
+              <div class="card-body">
+                <h5 class="card-title">
+                  <a href="{{ base_url }}hubs/{{ hub.name }}">{{ hub.name }}</a>
+                </h5>
+                <p class="card-text">
+                  <small class="text-muted">Owner: {{ hub.owner }}</small><br>
+                  {% if hub.description %}
+                    <small>{{ hub.description }}</small>
+                  {% endif %}
+                </p>
+                <div class="mb-2">
+                  <span class="badge 
+                    {% if hub.status == 'running' %}bg-success
+                    {% elif hub.status == 'pending' %}bg-warning
+                    {% elif hub.status == 'error' %}bg-danger
+                    {% else %}bg-secondary
+                    {% endif %}">
+                    {{ hub.status }}
+                  </span>
+                </div>
+                {% if hub.url %}
+                  <a href="{{ hub.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                    <i class="fa fa-external-link"></i> Open Hub
+                  </a>
+                {% endif %}
+                <a href="{{ base_url }}hubs/{{ hub.name }}" class="btn btn-sm btn-outline-secondary">
+                  <i class="fa fa-cog"></i> Manage
+                </a>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="row">
+        <div class="col-12">
+          <div class="alert alert-info">
+            <p>You don't have any hubs yet. <a href="{{ base_url }}hubs/create">Create your first hub</a> to get started!</p>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock main %}
+

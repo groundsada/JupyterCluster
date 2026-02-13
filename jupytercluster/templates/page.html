@@ -1,0 +1,113 @@
+<!DOCTYPE HTML>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>
+      {%- block title -%}
+        JupyterCluster
+      {%- endblock title -%}
+    </title>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% block stylesheet %}
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+      <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+      <link href="{{ static_url('css/style.css') }}" rel="stylesheet" type="text/css" />
+    {% endblock stylesheet %}
+    {% block favicon %}
+      <link rel="icon" href="{{ static_url('favicon.ico') }}" type="image/x-icon">
+    {% endblock favicon %}
+    {% block scripts %}
+      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+      <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    {% endblock scripts %}
+  </head>
+  <body>
+    <noscript>
+      <div id='noscript'>
+        JupyterCluster requires JavaScript.
+        <br>
+        Please enable it to proceed.
+      </div>
+    </noscript>
+    {% block nav_bar %}
+      <nav class="navbar navbar-expand-sm bg-body-tertiary mb-4">
+        <div class="container-fluid">
+          {% block logo %}
+            <span id="jupytercluster-logo" class="navbar-brand">
+              <a href="{{ base_url }}">
+                <strong>JupyterCluster</strong>
+              </a>
+            </span>
+          {% endblock logo %}
+          {% if user %}
+            <button class="navbar-toggler"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#thenavbar"
+                    aria-controls="thenavbar"
+                    aria-expanded="false"
+                    aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+            </button>
+          {% endif %}
+          <div class="collapse navbar-collapse" id="thenavbar">
+            <ul class="navbar-nav me-auto mb-0">
+              {% if user %}
+                {% block nav_bar_left_items %}
+                  <li class="nav-item">
+                    <a class="nav-link" href="{{ base_url }}home">Home</a>
+                  </li>
+                  <li class="nav-item">
+                    <a class="nav-link" href="{{ base_url }}hubs/create">Create Hub</a>
+                  </li>
+                  {% if is_admin %}
+                    <li class="nav-item">
+                      <a class="nav-link" href="{{ base_url }}admin">Admin</a>
+                    </li>
+                  {% endif %}
+                {% endblock nav_bar_left_items %}
+              {% endif %}
+            </ul>
+            <ul class="nav navbar-nav me-2">
+              {% block nav_bar_right_items %}
+                <li class="nav-item">
+                  {% block login_widget %}
+                    <span id="login_widget">
+                      {% if user %}
+                        <span class="me-1">{{ user }}</span>
+                        <a id="logout"
+                           role="button"
+                           class="btn btn-sm btn-outline-secondary"
+                           href="{{ logout_url }}">
+                          <i aria-hidden="true" class="fa fa-sign-out"></i> Logout
+                        </a>
+                      {% else %}
+                        <a id="login"
+                           role="button"
+                           class="btn btn-sm btn-outline-primary"
+                           href="{{ login_url }}">Login</a>
+                      {% endif %}
+                    </span>
+                  {% endblock login_widget %}
+                </li>
+              {% endblock nav_bar_right_items %}
+            </ul>
+          </div>
+        </div>
+      </nav>
+    {% endblock nav_bar %}
+    {% block announcement %}
+      {% if announcement %}
+        <div class="container text-center announcement alert alert-warning">{{ announcement | safe }}</div>
+      {% endif %}
+    {% endblock announcement %}
+    {% block main %}
+    {% endblock main %}
+    {% block footer %}
+    {% endblock footer %}
+    {% block script %}
+    {% endblock script %}
+  </body>
+</html>
+

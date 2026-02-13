@@ -1,0 +1,78 @@
+{% extends "page.html" %}
+{% block login_widget %}
+{% endblock login_widget %}
+{% block main %}
+  {% block login %}
+    <div id="login-main" class="container">
+      {% block login_container %}
+        {% if login_service %}
+          <div class="service-login text-center">
+            <p id='insecure-login-warning' class='hidden alert alert-warning'>
+              Warning: JupyterCluster seems to be served over an unsecured HTTP connection.
+              We strongly recommend enabling HTTPS for JupyterCluster.
+            </p>
+            <a role="button"
+               class='btn btn-primary btn-lg'
+               href='{{ authenticator_login_url | safe }}'>Sign in with {{ login_service }}</a>
+          </div>
+        {% else %}
+          <form action="{{ base_url }}login"
+                method="post"
+                role="form"
+                class="mx-auto"
+                style="max-width: 400px;">
+            <div class="auth-form-header mb-4">
+              <h1>Sign in</h1>
+            </div>
+            <div class='auth-form-body'>
+              <p id='insecure-login-warning' class='hidden alert alert-warning'>
+                Warning: JupyterCluster seems to be served over an unsecured HTTP connection.
+                We strongly recommend enabling HTTPS for JupyterCluster.
+              </p>
+              {% if login_error %}<p class="alert alert-danger">{{ login_error }}</p>{% endif %}
+              <div class="mb-3">
+                <label for="username_input" class="form-label">Username:</label>
+                <input id="username_input"
+                       type="text"
+                       autocapitalize="off"
+                       autocorrect="off"
+                       autocomplete="username"
+                       class="form-control"
+                       name="username"
+                       value="{{ username }}"
+                       autofocus="autofocus" />
+              </div>
+              <div class="mb-3">
+                <label for="password_input" class="form-label">Password:</label>
+                <input id="password_input"
+                       type="password"
+                       class="form-control"
+                       autocomplete="current-password"
+                       name="password" />
+              </div>
+              <div class="mb-3">
+                <input id="login_submit"
+                       type="submit"
+                       class='btn btn-primary form-control'
+                       value='Sign in' />
+              </div>
+            </div>
+          </form>
+        {% endif %}
+      {% endblock login_container %}
+    </div>
+  {% endblock login %}
+{% endblock main %}
+{% block script %}
+  {{ super() }}
+  <script>
+    if (!window.isSecureContext) {
+      // unhide http warning
+      var warning = document.getElementById('insecure-login-warning');
+      if (warning) {
+        warning.className = warning.className.replace(/\bhidden\b/, '');
+      }
+    }
+  </script>
+{% endblock script %}
+

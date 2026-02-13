@@ -1,0 +1,68 @@
+{% extends "page.html" %}
+{% block title %}Create Hub - JupyterCluster{% endblock %}
+{% block main %}
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <h1>Create New Hub</h1>
+      </div>
+    </div>
+
+    {% if error %}
+      <div class="row mt-3">
+        <div class="col-12">
+          <div class="alert alert-danger">{{ error }}</div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="row mt-4">
+      <div class="col-md-8">
+        <form method="post" action="{{ base_url }}hubs/create">
+          <div class="mb-3">
+            <label for="name" class="form-label">Hub Name <span class="text-danger">*</span></label>
+            <input type="text" 
+                   class="form-control" 
+                   id="name" 
+                   name="name" 
+                   required
+                   pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+                   title="Lowercase alphanumeric characters and hyphens only">
+            <small class="form-text text-muted">
+              Must be a valid Kubernetes name (lowercase alphanumeric and hyphens only)
+            </small>
+          </div>
+
+          <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea class="form-control" 
+                      id="description" 
+                      name="description" 
+                      rows="3"
+                      placeholder="Optional description for this hub"></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="values" class="form-label">Helm Values (JSON)</label>
+            <textarea class="form-control font-monospace" 
+                      id="values" 
+                      name="values" 
+                      rows="10"
+                      placeholder='{"hub": {"config": {"JupyterHub": {"authenticator_class": "dummy"}}}}'></textarea>
+            <small class="form-text text-muted">
+              Optional JSON configuration to override default Helm values for the JupyterHub instance
+            </small>
+          </div>
+
+          <div class="mb-3">
+            <button type="submit" class="btn btn-primary">
+              <i class="fa fa-plus"></i> Create Hub
+            </button>
+            <a href="{{ base_url }}home" class="btn btn-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock main %}
+

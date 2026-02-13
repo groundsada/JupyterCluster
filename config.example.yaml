@@ -1,0 +1,43 @@
+# Example configuration for JupyterCluster
+
+JupyterCluster:
+  # Database URL (SQLite for development, PostgreSQL/MySQL for production)
+  db_url: "sqlite:///data/jupytercluster.db"
+  
+  # Server configuration
+  port: 8080
+  ip: "0.0.0.0"
+  
+  # Hub configuration
+  default_namespace_prefix: "jupyterhub-"
+  default_helm_chart: "jupyterhub/jupyterhub"
+  
+  # Authentication
+  authenticator_class: "jupytercluster.auth.SimpleAuthenticator"
+  
+  # Or use OAuth:
+  # authenticator_class: "jupytercluster.auth.OAuthenticatorWrapper"
+
+# Simple Authenticator (for development/testing)
+SimpleAuthenticator:
+  users:
+    admin: "admin123"
+    user1: "user123"
+    user2: "user123"
+  admin_users:
+    admin: true
+
+# OAuth Authenticator (for production)
+# OAuthenticatorWrapper:
+#   oauthenticator_class: "oauthenticator.github.GitHubOAuthenticator"
+#   admin_users:
+#     admin-username: true
+# 
+# GitHubOAuthenticator:
+#   client_id: "your-github-client-id"
+#   client_secret: "your-github-client-secret"
+#   oauth_callback_url: "https://your-domain.com/oauth_callback"
+#   allowed_users:
+#     - username1
+#     - username2
+

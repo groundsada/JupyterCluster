@@ -1,0 +1,72 @@
+name: Branch Protection
+
+on:
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  validate-branch:
+    name: Validate Branch Protection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check branch name
+        run: |
+          BRANCH=${GITHUB_REF#refs/heads/}
+          if [[ ! "$BRANCH" =~ ^(main|develop|feature/|bugfix/|hotfix/|release/).*$ ]]; then
+            echo "Branch name '$BRANCH' does not follow naming convention"
+            exit 1
+          fi
+      
+      - name: Validate commit message
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            test
+            chore
+          scopes: |
+            auth
+            api
+            spawner
+            helm
+            k8s
+            docs
+            ci
+
+  enforce-standards:
+    name: Enforce Code Standards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      
+      - name: Run all tests
+        run: |
+          pytest tests/ -v --cov=jupytercluster --cov-report=term-missing
+      
+      - name: Check code coverage
+        run: |
+          pytest tests/ --cov=jupytercluster --cov-report=xml --cov-fail-under=70
+      
+      - name: Type checking
+        run: |
+          pip install mypy
+          mypy jupytercluster/ --ignore-missing-imports || true
+

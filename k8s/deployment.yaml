@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupytercluster
+  namespace: jupytercluster
+  labels:
+    app: jupytercluster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupytercluster
+  template:
+    metadata:
+      labels:
+        app: jupytercluster
+    spec:
+      serviceAccountName: jupytercluster
+      containers:
+      - name: jupytercluster
+        image: jupytercluster:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: JUPYTERCLUSTER_DB_URL
+          value: "sqlite:///data/jupytercluster.db"
+        - name: JUPYTERCLUSTER_PORT
+          value: "8080"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: jupytercluster-data
+
