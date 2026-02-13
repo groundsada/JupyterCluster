@@ -9,7 +9,7 @@ jobs:
     name: Validate Branch Protection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Check branch name
         run: |
@@ -34,7 +34,7 @@ jobs:
     name: Enforce Code Standards
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Set up Python
         uses: actions/setup-python@v5
