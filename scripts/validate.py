@@ -261,7 +261,7 @@ def check_common_issues():
                 # Check for Jinja2-only syntax
                 if "{% endblock" in content or "{% endif" in content or "{% endfor" in content:
                     errors.append(
-                        f"{template_file.name}: Contains Jinja2 syntax (should use {% end %})"
+                        f"{template_file.name}: Contains Jinja2 syntax (should use {{% end %}})"
                     )
                 if "|length" in content:
                     errors.append(
@@ -273,7 +273,7 @@ def check_common_issues():
                     )
                 if "{% module Template" in content:
                     errors.append(
-                        f"{template_file.name}: Contains invalid {% module Template() %} call"
+                        f"{template_file.name}: Contains invalid {{% module Template() %}} call"
                     )
 
     if errors:
