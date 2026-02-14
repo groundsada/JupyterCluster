@@ -2,8 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,
-                        String, Text)
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
