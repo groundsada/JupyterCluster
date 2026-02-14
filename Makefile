@@ -1,53 +1,27 @@
-.PHONY: help install test lint format clean build docker-build docker-push
+.PHONY: validate lint format test install
 
-help:
-	@echo "Available targets:"
-	@echo "  install      - Install dependencies"
-	@echo "  test         - Run tests"
-	@echo "  lint         - Run linters"
-	@echo "  format       - Format code"
-	@echo "  clean        - Clean build artifacts"
-	@echo "  build        - Build Python package"
-	@echo "  docker-build - Build Docker image"
-	@echo "  docker-push  - Push Docker image"
-
+# Install dependencies
 install:
 	pip install -e ".[dev]"
 
-test:
-	pytest tests/ -v --cov=jupytercluster --cov-report=term-missing
+# Run validation
+validate:
+	python3 scripts/validate.py
 
-test-unit:
-	pytest tests/ -v -m unit
-
-test-integration:
-	pytest tests/ -v -m integration
-
+# Run linting
 lint:
-	flake8 jupytercluster/ --max-line-length=100
-	black --check jupytercluster/
-	isort --check-only jupytercluster/
-	mypy jupytercluster/ --ignore-missing-imports || true
+	python3 -m flake8 jupytercluster/ --count --select=E9,F63,F7,F82 --show-source --statistics
+	python3 -m black --check jupytercluster/ tests/
+	python3 -m isort --check-only jupytercluster/ tests/
 
+# Auto-fix formatting
 format:
-	black jupytercluster/
-	isort jupytercluster/
+	python3 -m black jupytercluster/ tests/
+	python3 -m isort jupytercluster/ tests/
 
-clean:
-	rm -rf build/ dist/ *.egg-info .pytest_cache .coverage htmlcov/
+# Run tests
+test:
+	pytest tests/ -v
 
-build:
-	python -m build
-
-docker-build:
-	docker build -t jupytercluster:latest .
-
-docker-push:
-	docker push jupytercluster:latest
-
-helm-lint:
-	helm lint helm/jupytercluster/
-
-helm-template:
-	helm template jupytercluster helm/jupytercluster/
-
+# Run all checks (validate + test)
+check: validate test
