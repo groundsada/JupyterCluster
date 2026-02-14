@@ -1,10 +1,7 @@
 {% extends "page.html" %}
-{% block login_widget %}
-{% endblock login_widget %}
 {% block main %}
-  {% block login %}
-    <div id="login-main" class="container">
-      {% block login_container %}
+  <div id="login-main" class="container">
+    <div class="login-container">
         {% if login_service %}
           <div class="service-login text-center">
             <p id='insecure-login-warning' class='hidden alert alert-warning'>
@@ -59,9 +56,8 @@
             </div>
           </form>
         {% endif %}
-      {% endblock login_container %}
+      </div>
     </div>
-  {% endblock login %}
 {% endblock main %}
 {% block script %}
   {{ super() }}
