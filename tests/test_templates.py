@@ -181,7 +181,9 @@ class TestTemplates:
     def test_hub_detail_template_renders(self, loader):
         """Test that hub_detail template can be rendered"""
         try:
-            from tornado.web import static_url
+
+            def static_url(path):
+                return f"/static/{path}"
 
             # Create a simple object-like class for hub data
             class HubDict:
