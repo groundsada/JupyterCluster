@@ -49,6 +49,9 @@ class TestTemplates:
     def test_login_template_renders(self, loader):
         """Test that login template can be rendered with required variables"""
         try:
+            # Import static_url from tornado.web
+            from tornado.web import static_url
+
             html = loader.load("login.html").generate(
                 base_url="/",
                 user=None,
@@ -59,6 +62,7 @@ class TestTemplates:
                 authenticator_login_url=None,
                 login_error=None,
                 username=None,
+                static_url=static_url,
             )
             # If we get here, rendering succeeded
             assert html is not None
@@ -70,6 +74,8 @@ class TestTemplates:
     def test_home_template_renders(self, loader):
         """Test that home template can be rendered"""
         try:
+            from tornado.web import static_url
+
             html = loader.load("home.html").generate(
                 base_url="/",
                 user="testuser",
@@ -78,6 +84,7 @@ class TestTemplates:
                 logout_url="/logout",
                 hubs=[],
                 all_hubs=[],
+                static_url=static_url,
             )
             assert html is not None
         except ParseError as e:
@@ -88,6 +95,8 @@ class TestTemplates:
     def test_error_template_renders(self, loader):
         """Test that error template can be rendered"""
         try:
+            from tornado.web import static_url
+
             html = loader.load("error.html").generate(
                 base_url="/",
                 user=None,
@@ -96,6 +105,7 @@ class TestTemplates:
                 logout_url="/logout",
                 status_code=404,
                 error_message="Not found",
+                static_url=static_url,
             )
             assert html is not None
         except ParseError as e:
@@ -106,6 +116,8 @@ class TestTemplates:
     def test_admin_template_renders(self, loader):
         """Test that admin template can be rendered"""
         try:
+            from tornado.web import static_url
+
             html = loader.load("admin.html").generate(
                 base_url="/",
                 user="admin",
@@ -114,6 +126,7 @@ class TestTemplates:
                 logout_url="/logout",
                 users=[],
                 hubs=[],
+                static_url=static_url,
             )
             assert html is not None
         except ParseError as e:
