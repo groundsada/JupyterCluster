@@ -57,5 +57,12 @@ class BaseHandler(web.RequestHandler):
         kwargs.setdefault("logout_url", "/logout")
         kwargs.setdefault("announcement", None)
 
+        # Login template specific variables
+        if name == "login.html":
+            kwargs.setdefault("login_service", None)
+            kwargs.setdefault("authenticator_login_url", None)
+            kwargs.setdefault("login_error", None)
+            kwargs.setdefault("username", None)
+
         # Render template
         return self.render(name, **kwargs)
