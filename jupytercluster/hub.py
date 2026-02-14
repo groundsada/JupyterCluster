@@ -5,7 +5,8 @@ from datetime import datetime
 from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
-from traitlets import Unicode, Dict as TraitDict, Instance
+from traitlets import Dict as TraitDict
+from traitlets import Instance, Unicode
 from traitlets.config import LoggingConfigurable
 
 from .orm import Hub as ORMHub

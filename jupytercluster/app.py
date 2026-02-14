@@ -5,20 +5,21 @@ import os
 from typing import Dict, Optional
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import scoped_session, sessionmaker
 from tornado import web
 from tornado.ioloop import IOLoop
-from traitlets import Unicode, Dict as TraitDict, Integer, default
+from traitlets import Dict as TraitDict
+from traitlets import Integer, Unicode, default
 from traitlets.config import Application
 
 from . import orm
-from .auth import SimpleAuthenticator, Authenticator, OAuthenticatorWrapper
-from .hub import HubInstance
-from .api.hubs import HubListAPIHandler, HubAPIHandler, HubActionAPIHandler
 from .api.base import APIHandler
-from .handlers.login import LoginHandler, LogoutHandler
+from .api.hubs import HubActionAPIHandler, HubAPIHandler, HubListAPIHandler
+from .auth import Authenticator, OAuthenticatorWrapper, SimpleAuthenticator
 from .handlers.home import HomeHandler
 from .handlers.hubs import HubCreateHandler, HubDetailHandler
+from .handlers.login import LoginHandler, LogoutHandler
+from .hub import HubInstance
 
 try:
     from .handlers.oauth import OAuthCallbackHandler, OAuthLoginHandler

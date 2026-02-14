@@ -1,9 +1,11 @@
 """Authentication and authorization for JupyterCluster"""
 
 import logging
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
-from traitlets import Unicode, Dict as TraitDict, Bool, default
+from traitlets import Bool
+from traitlets import Dict as TraitDict
+from traitlets import Unicode, default
 from traitlets.config import LoggingConfigurable
 
 logger = logging.getLogger(__name__)

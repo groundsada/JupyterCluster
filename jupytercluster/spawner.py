@@ -10,7 +10,8 @@ from typing import Dict, Optional, Tuple
 
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
-from traitlets import Dict as TraitDict, Unicode, Integer, default
+from traitlets import Dict as TraitDict
+from traitlets import Integer, Unicode, default
 from traitlets.config import LoggingConfigurable
 
 logger = logging.getLogger(__name__)

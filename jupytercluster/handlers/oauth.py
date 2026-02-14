@@ -2,7 +2,7 @@
 
 import logging
 import secrets
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlencode, urlparse
 
 from tornado import web
 from tornado.httputil import url_concat
