@@ -23,7 +23,7 @@ class TestTemplates:
         """Create template loader"""
         return Loader(template_dir)
 
-    def test_all_templates_parse(self, template_dir):
+    def test_all_templates_parse(self, template_dir, loader):
         """Test that all HTML templates can be parsed without errors"""
         template_files = [f for f in os.listdir(template_dir) if f.endswith(".html")]
 
@@ -34,17 +34,31 @@ class TestTemplates:
             with open(template_path, "r") as f:
                 content = f.read()
 
-            try:
-                # Try to parse the template
-                Template(content, name=template_file)
-            except ParseError as e:
-                pytest.fail(
-                    f"Template {template_file} failed to parse: {e.message} at line {e.lineno}"
-                )
-            except Exception as e:
-                pytest.fail(
-                    f"Template {template_file} raised unexpected error: {type(e).__name__}: {e}"
-                )
+            # Skip templates that extend others (they need a loader)
+            if "{% extends" in content:
+                # Use loader for templates that extend
+                try:
+                    loader.load(template_file)
+                except ParseError as e:
+                    pytest.fail(
+                        f"Template {template_file} failed to parse: {e.message} at line {e.lineno}"
+                    )
+                except Exception as e:
+                    pytest.fail(
+                        f"Template {template_file} raised unexpected error: {type(e).__name__}: {e}"
+                    )
+            else:
+                # Parse standalone templates directly
+                try:
+                    Template(content, name=template_file)
+                except ParseError as e:
+                    pytest.fail(
+                        f"Template {template_file} failed to parse: {e.message} at line {e.lineno}"
+                    )
+                except Exception as e:
+                    pytest.fail(
+                        f"Template {template_file} raised unexpected error: {type(e).__name__}: {e}"
+                    )
 
     def test_login_template_renders(self, loader):
         """Test that login template can be rendered with required variables"""
@@ -137,6 +151,8 @@ class TestTemplates:
     def test_hub_create_template_renders(self, loader):
         """Test that hub_create template can be rendered"""
         try:
+            from tornado.web import static_url
+
             html = loader.load("hub_create.html").generate(
                 base_url="/",
                 user="testuser",
@@ -144,6 +160,7 @@ class TestTemplates:
                 login_url="/login",
                 logout_url="/logout",
                 error=None,
+                static_url=static_url,
             )
             assert html is not None
         except ParseError as e:
@@ -154,23 +171,38 @@ class TestTemplates:
     def test_hub_detail_template_renders(self, loader):
         """Test that hub_detail template can be rendered"""
         try:
-            html = loader.load("hub_detail.html").generate(
-                base_url="/",
-                user="testuser",
-                is_admin=False,
-                login_url="/login",
-                logout_url="/logout",
-                hub={
+            from tornado.web import static_url
+
+            # Create a simple object-like class for hub data
+            class HubDict:
+                def __init__(self, data):
+                    for key, value in data.items():
+                        setattr(self, key, value)
+
+            hub = HubDict(
+                {
                     "name": "test-hub",
                     "namespace": "jupyterhub-test-hub",
                     "owner": "testuser",
                     "status": "running",
                     "url": "http://test-hub.example.com",
                     "helm_chart": "jupyterhub/jupyterhub",
+                    "helm_chart_version": "",
+                    "description": "",
                     "created": "2024-01-01T00:00:00",
                     "last_activity": "2024-01-01T00:00:00",
-                },
+                }
+            )
+
+            html = loader.load("hub_detail.html").generate(
+                base_url="/",
+                user="testuser",
+                is_admin=False,
+                login_url="/login",
+                logout_url="/logout",
+                hub=hub,
                 error=None,
+                static_url=static_url,
             )
             assert html is not None
         except ParseError as e:
