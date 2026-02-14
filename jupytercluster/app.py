@@ -325,10 +325,16 @@ class JupyterCluster(Application):
 
 
 class HealthHandler(APIHandler):
-    """Health check endpoint"""
+    """Health check endpoint for Kubernetes readiness/liveness probes"""
 
     def get(self):
+        """GET /api/health - Health check"""
         self.write({"status": "ok"})
+
+    def head(self):
+        """HEAD /api/health - Health check (for probes that use HEAD)"""
+        self.set_status(200)
+        self.finish()
 
 
 def main():
