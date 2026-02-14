@@ -51,28 +51,28 @@
                         </tr>
                       </thead>
                       <tbody>
-                        {% for user in users %}
+                        {% for u in users %}
                           <tr>
-                            <td><strong>{{ user.name }}</strong></td>
+                            <td><strong>{{ u.name }}</strong></td>
                             <td>
-                              {% if user.admin %}
+                              {% if u.admin %}
                                 <span class="badge bg-success">Yes</span>
                               {% else %}
                                 <span class="badge bg-secondary">No</span>
                               {% end %}
                             </td>
-                            <td>{{ user.max_hubs or "Unlimited" }}</td>
+                            <td>{{ u.max_hubs or "Unlimited" }}</td>
                             <td>
-                              {% if user.allowed_namespace_prefixes %}
-                                {% for prefix in user.allowed_namespace_prefixes %}
-                                  <code>{{ prefix }}</code>{% if not (prefix == user.allowed_namespace_prefixes[-1]) %}, {% end %}
+                              {% if u.allowed_namespace_prefixes %}
+                                {% for prefix in u.allowed_namespace_prefixes %}
+                                  <code>{{ prefix }}</code>{% if not (prefix == u.allowed_namespace_prefixes[-1]) %}, {% end %}
                                 {% end %}
                               {% else %}
                                 <span class="text-muted">All</span>
                               {% end %}
                             </td>
-                            <td><small class="text-muted">{{ user.created or "N/A" }}</small></td>
-                            <td><small class="text-muted">{{ user.last_activity or "N/A" }}</small></td>
+                            <td><small class="text-muted">{{ u.created or "N/A" }}</small></td>
+                            <td><small class="text-muted">{{ u.last_activity or "N/A" }}</small></td>
                           </tr>
                         {% end %}
                       </tbody>
