@@ -31,11 +31,18 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
+  # hosts can be either:
+  # - A list of strings: ["example.com", "www.example.com"]
+  # - A list of objects with host and paths: [{"host": "example.com", "paths": [{"path": "/", "pathType": "Prefix"}]}]
   hosts:
     - host: jupytercluster.example.com
       paths:
         - path: /
           pathType: Prefix
+  # Alternative: simple string list format
+  # hosts: ["jupytercluster.example.com"]
+  path: "/"  # Default path when using string list format
+  pathType: "Prefix"  # Default pathType when using string list format
   tls: []
 
 resources:
