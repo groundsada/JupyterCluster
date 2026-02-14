@@ -1,10 +1,11 @@
 """Test template parsing and rendering"""
 
 import os
+
 import pytest
 
 try:
-    from tornado.template import Template, ParseError, Loader
+    from tornado.template import Loader, ParseError, Template
 except ImportError:
     pytest.skip("tornado not available", allow_module_level=True)
 
@@ -79,6 +80,7 @@ class TestTemplates:
                 login_error=None,
                 username=None,
                 static_url=static_url,
+                announcement=None,
             )
             # If we get here, rendering succeeded
             assert html is not None
@@ -103,6 +105,7 @@ class TestTemplates:
                 hubs=[],
                 all_hubs=[],
                 static_url=static_url,
+                announcement=None,
             )
             assert html is not None
         except ParseError as e:
@@ -126,6 +129,7 @@ class TestTemplates:
                 status_code=404,
                 error_message="Not found",
                 static_url=static_url,
+                announcement=None,
             )
             assert html is not None
         except ParseError as e:
@@ -149,6 +153,7 @@ class TestTemplates:
                 users=[],
                 hubs=[],
                 static_url=static_url,
+                announcement=None,
             )
             assert html is not None
         except ParseError as e:
@@ -171,6 +176,7 @@ class TestTemplates:
                 logout_url="/logout",
                 error=None,
                 static_url=static_url,
+                announcement=None,
             )
             assert html is not None
         except ParseError as e:
@@ -215,6 +221,7 @@ class TestTemplates:
                 hub=hub,
                 error=None,
                 static_url=static_url,
+                announcement=None,
             )
             assert html is not None
         except ParseError as e:

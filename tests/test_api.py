@@ -1,12 +1,14 @@
 """Tests for API handlers"""
 
 import json
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 from tornado.testing import AsyncHTTPTestCase
 from tornado.web import Application
-from jupytercluster.app import JupyterCluster, HealthHandler
-from jupytercluster.api.hubs import HubListAPIHandler, HubAPIHandler
+
+from jupytercluster.api.hubs import HubAPIHandler, HubListAPIHandler
+from jupytercluster.app import HealthHandler, JupyterCluster
 
 
 class TestAPIHandlers(AsyncHTTPTestCase):

@@ -1,7 +1,9 @@
 """Tests for HubSpawner"""
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+
 from jupytercluster.spawner import HubSpawner
 
 

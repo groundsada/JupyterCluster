@@ -1,7 +1,8 @@
 """Tests for authentication"""
 
 import pytest
-from jupytercluster.auth import SimpleAuthenticator, OAuthenticatorWrapper, Scope
+
+from jupytercluster.auth import OAuthenticatorWrapper, Scope, SimpleAuthenticator
 
 
 class TestSimpleAuthenticator:
