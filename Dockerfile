@@ -24,6 +24,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY jupytercluster/ /app/jupytercluster/
 COPY setup.py pyproject.toml /app/
 
+# Copy templates and static to expected location
+# Tornado looks for templates relative to the app module
+# Ensure templates are accessible from jupytercluster package
+RUN mkdir -p /app/templates /app/static && \
+    cp -r /app/jupytercluster/templates/* /app/templates/ && \
+    cp -r /app/jupytercluster/static/* /app/static/ || true
+
 # Install application
 RUN pip install -e .
 

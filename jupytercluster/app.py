@@ -121,9 +121,17 @@ class JupyterCluster(Application):
     def _init_web_app(self):
         """Initialize Tornado web application"""
         # Template and static paths
-        here = os.path.dirname(os.path.dirname(__file__))
+        # When installed as package, templates are in jupytercluster/templates
+        # When running from source, they're relative to this file
+        here = os.path.dirname(__file__)
         template_path = os.path.join(here, "templates")
         static_path = os.path.join(here, "static")
+        
+        # Fallback: if templates not found, try parent directory (for development)
+        if not os.path.exists(template_path):
+            template_path = os.path.join(os.path.dirname(here), "templates")
+        if not os.path.exists(static_path):
+            static_path = os.path.join(os.path.dirname(here), "static")
 
         handlers = [
             # Web UI
