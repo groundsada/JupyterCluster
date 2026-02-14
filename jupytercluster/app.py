@@ -19,6 +19,7 @@ from .api.base import APIHandler
 from .handlers.login import LoginHandler, LogoutHandler
 from .handlers.home import HomeHandler
 from .handlers.hubs import HubCreateHandler, HubDetailHandler
+
 try:
     from .handlers.oauth import OAuthCallbackHandler, OAuthLoginHandler
 except ImportError:
@@ -132,12 +133,16 @@ class JupyterCluster(Application):
             (r"/hubs/create", HubCreateHandler),
             (r"/hubs/([^/]+)", HubDetailHandler),
             # OAuth handlers
-            (r"/oauth_login", OAuthLoginHandler)
-            if OAuthLoginHandler
-            else (r"/oauth_login", web.ErrorHandler, {"status_code": 404}),
-            (r"/oauth_callback", OAuthCallbackHandler)
-            if OAuthCallbackHandler
-            else (r"/oauth_callback", web.ErrorHandler, {"status_code": 404}),
+            (
+                (r"/oauth_login", OAuthLoginHandler)
+                if OAuthLoginHandler
+                else (r"/oauth_login", web.ErrorHandler, {"status_code": 404})
+            ),
+            (
+                (r"/oauth_callback", OAuthCallbackHandler)
+                if OAuthCallbackHandler
+                else (r"/oauth_callback", web.ErrorHandler, {"status_code": 404})
+            ),
             # API
             (r"/api/hubs", HubListAPIHandler),
             (r"/api/hubs/([^/]+)", HubAPIHandler),
@@ -195,9 +200,7 @@ class JupyterCluster(Application):
         # Get user from database to check limits
         user = self.db.query(orm.User).filter_by(name=owner).first()
         if user and user.max_hubs and len(user_hubs) >= user.max_hubs:
-            raise ValueError(
-                f"User {owner} has reached maximum hub limit of {user.max_hubs}"
-            )
+            raise ValueError(f"User {owner} has reached maximum hub limit of {user.max_hubs}")
 
         # Validate namespace prefix restrictions (if configured)
         if user and user.allowed_namespace_prefixes:
@@ -205,9 +208,7 @@ class JupyterCluster(Application):
                 namespace.startswith(prefix) for prefix in user.allowed_namespace_prefixes
             )
             if not allowed:
-                raise ValueError(
-                    f"User {owner} is not allowed to deploy to namespace {namespace}"
-                )
+                raise ValueError(f"User {owner} is not allowed to deploy to namespace {namespace}")
 
         # Generate Helm release name
         helm_release_name = f"jupyterhub-{name}"
@@ -264,7 +265,7 @@ class JupyterCluster(Application):
             return False
         if not name[0].isalnum() or not name[-1].isalnum():
             return False
-        return all(c.isalnum() or c == '-' for c in name)
+        return all(c.isalnum() or c == "-" for c in name)
 
     def start(self):
         """Start the JupyterCluster server"""
@@ -289,4 +290,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -242,11 +242,13 @@ class HubSpawner(LoggingConfigurable):
         try:
             ns = self.core_v1.read_namespace(name=self.namespace)
             # Update labels to ensure ownership
-            ns.metadata.labels.update({
-                "jupytercluster.io/managed": "true",
-                "jupytercluster.io/hub": self.hub_name,
-                "jupytercluster.io/owner": self.owner,
-            })
+            ns.metadata.labels.update(
+                {
+                    "jupytercluster.io/managed": "true",
+                    "jupytercluster.io/hub": self.hub_name,
+                    "jupytercluster.io/owner": self.owner,
+                }
+            )
             self.core_v1.patch_namespace(name=self.namespace, body=ns)
             self.log.debug(f"Namespace {self.namespace} already exists, updated labels")
         except ApiException as e:
@@ -322,9 +324,7 @@ class HubSpawner(LoggingConfigurable):
                 self.log.error(f"Helm deployment failed: {error_msg}")
                 raise RuntimeError(f"Helm deployment failed: {error_msg}")
 
-            self.log.info(
-                f"Helm release {self.helm_release_name} deployed successfully"
-            )
+            self.log.info(f"Helm release {self.helm_release_name} deployed successfully")
 
         finally:
             # Clean up temp file
@@ -404,6 +404,7 @@ class HubSpawner(LoggingConfigurable):
                     # Try to get ingress first
                     try:
                         from kubernetes.client import NetworkingV1Api
+
                         net_v1 = NetworkingV1Api()
                         ingresses = net_v1.list_namespaced_ingress(namespace=self.namespace)
                         if ingresses.items:
@@ -430,9 +431,7 @@ class HubSpawner(LoggingConfigurable):
                 elapsed += wait_interval
 
         # Timeout - return placeholder
-        self.log.warning(
-            f"Hub not ready after {max_wait}s, returning placeholder URL"
-        )
+        self.log.warning(f"Hub not ready after {max_wait}s, returning placeholder URL")
         return f"https://{self.hub_name}.example.com"
 
     def get_state(self) -> Dict:

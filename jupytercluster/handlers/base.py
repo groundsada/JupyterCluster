@@ -58,4 +58,3 @@ class BaseHandler(web.RequestHandler):
 
         # Render template
         return self.render(name, **kwargs)
-

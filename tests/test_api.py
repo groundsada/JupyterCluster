@@ -41,4 +41,3 @@ class TestAPIHandlers(AsyncHTTPTestCase):
 
         response = self.fetch("/api/hubs", headers={"X-User": "test-user"})
         assert response.code == 200
-

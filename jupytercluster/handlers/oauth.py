@@ -47,10 +47,13 @@ class OAuthLoginHandler(BaseHandler):
 
         # Add state and redirect_uri to auth URL
         redirect_uri = f"{self.request.protocol}://{self.request.host}/oauth_callback"
-        auth_url = url_concat(auth_url, {
-            "state": state,
-            "redirect_uri": redirect_uri,
-        })
+        auth_url = url_concat(
+            auth_url,
+            {
+                "state": state,
+                "redirect_uri": redirect_uri,
+            },
+        )
 
         self.redirect(auth_url)
 

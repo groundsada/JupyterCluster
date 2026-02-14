@@ -36,4 +36,3 @@ class HomeHandler(BaseHandler):
             all_hubs=all_hubs if self.is_admin else user_hubs,
             user=user,
         )
-

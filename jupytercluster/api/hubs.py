@@ -141,4 +141,3 @@ class HubActionAPIHandler(APIHandler):
         except Exception as e:
             logger.error(f"Failed to {action} hub {hub_name}: {e}")
             raise web.HTTPError(500, f"Failed to {action} hub: {str(e)}")
-

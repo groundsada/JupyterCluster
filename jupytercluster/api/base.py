@@ -73,4 +73,3 @@ class APIHandler(web.RequestHandler):
         """Require permission to manage a hub, raise 403 if not"""
         if not self.check_hub_permission(hub_owner):
             raise web.HTTPError(403, "Permission denied")
-

@@ -162,4 +162,3 @@ class HubInstance(LoggingConfigurable):
             "last_activity": self.last_activity.isoformat() if self.last_activity else None,
             "description": self.description,
         }
-

@@ -15,8 +15,12 @@ class Hub(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, nullable=False, index=True)
-    namespace = Column(String(255), unique=True, nullable=False, index=True)  # UNIQUE: One hub per namespace
-    owner = Column(String(255), nullable=False, index=True)  # Username of the owner - CRITICAL for permission checks
+    namespace = Column(
+        String(255), unique=True, nullable=False, index=True
+    )  # UNIQUE: One hub per namespace
+    owner = Column(
+        String(255), nullable=False, index=True
+    )  # Username of the owner - CRITICAL for permission checks
     helm_release_name = Column(String(255), unique=True, nullable=False)
 
     # Helm chart configuration

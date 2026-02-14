@@ -42,9 +42,7 @@ class LoginHandler(BaseHandler):
             return
 
         # Authenticate
-        authenticated_user = self.jupytercluster.authenticator.authenticate(
-            username, password
-        )
+        authenticated_user = self.jupytercluster.authenticator.authenticate(username, password)
 
         if authenticated_user:
             # Set secure cookie
@@ -69,4 +67,3 @@ class LogoutHandler(BaseHandler):
 
         # Redirect to login
         self.redirect("/login")
-

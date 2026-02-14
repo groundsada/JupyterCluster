@@ -28,4 +28,3 @@ def sample_hub_data():
         "helm_release_name": "jupyterhub-test-hub",
         "status": "pending",
     }
-

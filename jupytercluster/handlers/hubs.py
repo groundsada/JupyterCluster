@@ -32,28 +32,20 @@ class HubCreateHandler(BaseHandler):
         values_json = self.get_argument("values", "{}")
 
         if not hub_name:
-            self.render_template(
-                "hub_create.html",
-                error="Hub name is required"
-            )
+            self.render_template("hub_create.html", error="Hub name is required")
             return
 
         try:
             values = json.loads(values_json) if values_json else {}
         except json.JSONDecodeError:
-            self.render_template(
-                "hub_create.html",
-                error="Invalid JSON in values field"
-            )
+            self.render_template("hub_create.html", error="Invalid JSON in values field")
             return
 
         app = self.jupytercluster
 
         # Check if hub already exists
         if hub_name in app.hubs:
-            self.render_template(
-                "hub_create.html", error=f"Hub {hub_name} already exists"
-            )
+            self.render_template("hub_create.html", error=f"Hub {hub_name} already exists")
             return
 
         try:
@@ -69,10 +61,7 @@ class HubCreateHandler(BaseHandler):
             self.redirect(f"/hubs/{hub_name}")
         except Exception as e:
             logger.error(f"Failed to create hub {hub_name}: {e}")
-            self.render_template(
-                "hub_create.html",
-                error=f"Failed to create hub: {str(e)}"
-            )
+            self.render_template("hub_create.html", error=f"Failed to create hub: {str(e)}")
 
 
 class HubDetailHandler(BaseHandler):
@@ -133,8 +122,5 @@ class HubDetailHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to {action} hub {hub_name}: {e}")
             self.render_template(
-                "hub_detail.html",
-                hub=hub.to_dict(),
-                error=f"Failed to {action} hub: {str(e)}"
+                "hub_detail.html", hub=hub.to_dict(), error=f"Failed to {action} hub: {str(e)}"
             )
-
