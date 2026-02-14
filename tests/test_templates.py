@@ -2,7 +2,11 @@
 
 import os
 import pytest
-from tornado.template import Template, ParseError, Loader
+
+try:
+    from tornado.template import Template, ParseError, Loader
+except ImportError:
+    pytest.skip("tornado not available", allow_module_level=True)
 
 
 class TestTemplates:
