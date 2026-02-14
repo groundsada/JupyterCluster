@@ -85,6 +85,7 @@ class User(Base):
 
 class Config(Base):
     """Application configuration key-value store"""
+
     __tablename__ = "config"
     id = Column(Integer, primary_key=True)
     key = Column(String(255), unique=True, nullable=False, index=True)

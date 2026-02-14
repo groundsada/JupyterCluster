@@ -28,14 +28,16 @@ class AdminHandler(BaseHandler):
         users = app.db.query(app.orm.User).all()
         user_list = []
         for u in users:
-            user_list.append({
-                "name": u.name,
-                "admin": u.admin,
-                "max_hubs": u.max_hubs,
-                "allowed_namespace_prefixes": u.allowed_namespace_prefixes or [],
-                "created": u.created.isoformat() if u.created else None,
-                "last_activity": u.last_activity.isoformat() if u.last_activity else None,
-            })
+            user_list.append(
+                {
+                    "name": u.name,
+                    "admin": u.admin,
+                    "max_hubs": u.max_hubs,
+                    "allowed_namespace_prefixes": u.allowed_namespace_prefixes or [],
+                    "created": u.created.isoformat() if u.created else None,
+                    "last_activity": u.last_activity.isoformat() if u.last_activity else None,
+                }
+            )
 
         # Get all hubs
         all_hubs = []
@@ -47,4 +49,3 @@ class AdminHandler(BaseHandler):
             users=user_list,
             hubs=all_hubs,
         )
-

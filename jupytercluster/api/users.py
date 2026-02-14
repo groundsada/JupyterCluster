@@ -22,17 +22,20 @@ class UserListAPIHandler(APIHandler):
             raise web.HTTPError(500, "JupyterCluster application not found")
 
         from .. import orm
+
         users = app.db.query(orm.User).all()
         user_list = []
         for u in users:
-            user_list.append({
-                "name": u.name,
-                "admin": u.admin,
-                "max_hubs": u.max_hubs,
-                "allowed_namespace_prefixes": u.allowed_namespace_prefixes or [],
-                "created": u.created.isoformat() if u.created else None,
-                "last_activity": u.last_activity.isoformat() if u.last_activity else None,
-            })
+            user_list.append(
+                {
+                    "name": u.name,
+                    "admin": u.admin,
+                    "max_hubs": u.max_hubs,
+                    "allowed_namespace_prefixes": u.allowed_namespace_prefixes or [],
+                    "created": u.created.isoformat() if u.created else None,
+                    "last_activity": u.last_activity.isoformat() if u.last_activity else None,
+                }
+            )
 
         self.write({"users": user_list})
 
@@ -50,18 +53,21 @@ class UserAPIHandler(APIHandler):
             raise web.HTTPError(500, "JupyterCluster application not found")
 
         from .. import orm
+
         user = app.db.query(orm.User).filter_by(name=username).first()
         if not user:
             raise web.HTTPError(404, f"User {username} not found")
 
-        self.write({
-            "name": user.name,
-            "admin": user.admin,
-            "max_hubs": user.max_hubs,
-            "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
-            "created": user.created.isoformat() if user.created else None,
-            "last_activity": user.last_activity.isoformat() if user.last_activity else None,
-        })
+        self.write(
+            {
+                "name": user.name,
+                "admin": user.admin,
+                "max_hubs": user.max_hubs,
+                "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
+                "created": user.created.isoformat() if user.created else None,
+                "last_activity": user.last_activity.isoformat() if user.last_activity else None,
+            }
+        )
 
     async def post(self, username: str):
         """POST /api/users/:name - Create a new user"""
@@ -74,6 +80,7 @@ class UserAPIHandler(APIHandler):
 
         # Check if user already exists
         from .. import orm
+
         existing = app.db.query(orm.User).filter_by(name=username).first()
         if existing:
             raise web.HTTPError(409, f"User {username} already exists")
@@ -95,12 +102,14 @@ class UserAPIHandler(APIHandler):
             app.db.commit()
 
             self.set_status(201)
-            self.write({
-                "name": user.name,
-                "admin": user.admin,
-                "max_hubs": user.max_hubs,
-                "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
-            })
+            self.write(
+                {
+                    "name": user.name,
+                    "admin": user.admin,
+                    "max_hubs": user.max_hubs,
+                    "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
+                }
+            )
         except Exception as e:
             logger.error(f"Failed to create user {username}: {e}")
             app.db.rollback()
@@ -116,6 +125,7 @@ class UserAPIHandler(APIHandler):
             raise web.HTTPError(500, "JupyterCluster application not found")
 
         from .. import orm
+
         user = app.db.query(orm.User).filter_by(name=username).first()
         if not user:
             raise web.HTTPError(404, f"User {username} not found")
@@ -133,12 +143,14 @@ class UserAPIHandler(APIHandler):
 
             app.db.commit()
 
-            self.write({
-                "name": user.name,
-                "admin": user.admin,
-                "max_hubs": user.max_hubs,
-                "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
-            })
+            self.write(
+                {
+                    "name": user.name,
+                    "admin": user.admin,
+                    "max_hubs": user.max_hubs,
+                    "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
+                }
+            )
         except Exception as e:
             logger.error(f"Failed to update user {username}: {e}")
             app.db.rollback()
@@ -154,6 +166,7 @@ class UserAPIHandler(APIHandler):
             raise web.HTTPError(500, "JupyterCluster application not found")
 
         from .. import orm
+
         user = app.db.query(orm.User).filter_by(name=username).first()
         if not user:
             raise web.HTTPError(404, f"User {username} not found")
@@ -161,7 +174,9 @@ class UserAPIHandler(APIHandler):
         # Check if user owns any hubs
         user_hubs = [h for h in app.hubs.values() if h.owner == username]
         if user_hubs:
-            raise web.HTTPError(400, f"Cannot delete user {username}: user owns {len(user_hubs)} hub(s)")
+            raise web.HTTPError(
+                400, f"Cannot delete user {username}: user owns {len(user_hubs)} hub(s)"
+            )
 
         try:
             app.db.delete(user)
@@ -171,4 +186,3 @@ class UserAPIHandler(APIHandler):
             logger.error(f"Failed to delete user {username}: {e}")
             app.db.rollback()
             raise web.HTTPError(500, f"Failed to delete user: {str(e)}")
-

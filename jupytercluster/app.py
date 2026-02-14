@@ -100,7 +100,7 @@ class JupyterCluster(Application):
         orm.Base.metadata.create_all(self.engine)
         self.Session = scoped_session(sessionmaker(bind=self.engine))
         self.db = self.Session()
-        
+
         # Initialize or load cookie secret
         self._init_cookie_secret()
 
@@ -137,7 +137,7 @@ class JupyterCluster(Application):
         here = os.path.dirname(__file__)
         template_path = os.path.join(here, "templates")
         static_path = os.path.join(here, "static")
-        
+
         # Verify paths exist
         if not os.path.exists(template_path):
             logger.warning(f"Template path not found: {template_path}")
@@ -298,13 +298,12 @@ class JupyterCluster(Application):
         self.web_app.listen(self.port, address=self.ip)
         IOLoop.current().start()
 
-
     def _init_cookie_secret(self):
         """Initialize or load cookie secret from database"""
         if self.cookie_secret:
             # Use configured secret
             return
-        
+
         # Try to load from database
         config_entry = self.db.query(orm.Config).filter_by(key="cookie_secret").first()
         if config_entry:

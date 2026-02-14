@@ -33,4 +33,3 @@ class ErrorHandler(BaseHandler):
             status_code=status_code,
             error_message=error_message,
         )
-
