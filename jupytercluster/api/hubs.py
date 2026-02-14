@@ -90,6 +90,50 @@ class HubAPIHandler(APIHandler):
             logger.error(f"Failed to create hub {hub_name}: {e}")
             raise web.HTTPError(500, f"Failed to create hub: {str(e)}")
 
+    async def put(self, hub_name: str):
+        """PUT /api/hubs/:name - Update a hub"""
+        current_user = self.get_current_user()
+        if not current_user:
+            raise web.HTTPError(401, "Authentication required")
+
+        app = self.application.settings.get("jupytercluster")
+        if not app:
+            raise web.HTTPError(500, "JupyterCluster application not found")
+
+        if hub_name not in app.hubs:
+            raise web.HTTPError(404, f"Hub {hub_name} not found")
+
+        hub = app.hubs[hub_name]
+
+        # Check permission
+        self.require_hub_permission(hub.owner)
+
+        # Get update data from request body
+        body = self.get_json_body() or {}
+        values = body.get("values")
+        description = body.get("description")
+
+        try:
+            # Update hub values if provided
+            if values is not None:
+                # Validate values through spawner
+                spawner = hub.get_spawner()
+                sanitized_values = spawner._validate_helm_values(values)
+                hub.values = sanitized_values
+
+            # Update description if provided
+            if description is not None:
+                hub.description = description
+
+            # Save to database
+            hub._save_to_orm()
+            app.db.commit()
+
+            self.write(hub.to_dict())
+        except Exception as e:
+            logger.error(f"Failed to update hub {hub_name}: {e}")
+            raise web.HTTPError(500, f"Failed to update hub: {str(e)}")
+
     async def delete(self, hub_name: str):
         """DELETE /api/hubs/:name - Delete a hub"""
         app = self.application.settings.get("jupytercluster")

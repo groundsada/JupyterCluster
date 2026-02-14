@@ -81,3 +81,14 @@ class User(Base):
 
     def __repr__(self):
         return f"<User(name={self.name}, admin={self.admin})>"
+
+
+class Config(Base):
+    """Application configuration key-value store"""
+    __tablename__ = "config"
+    id = Column(Integer, primary_key=True)
+    key = Column(String(255), unique=True, nullable=False, index=True)
+    value = Column(Text, nullable=False)
+
+    def __repr__(self):
+        return f"<Config(key={self.key})>"

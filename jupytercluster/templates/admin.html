@@ -1,0 +1,148 @@
+{% extends "page.html" %}
+{% block title %}Admin - JupyterCluster{% endblock %}
+{% block main %}
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <h1>Admin Panel</h1>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ base_url }}home">Home</a></li>
+            <li class="breadcrumb-item active">Admin</li>
+          </ol>
+        </nav>
+      </div>
+    </div>
+
+    <div class="row mt-4">
+      <div class="col-12">
+        <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">
+              Users ({{ users|length }})
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="hubs-tab" data-bs-toggle="tab" data-bs-target="#hubs" type="button" role="tab">
+              All Hubs ({{ hubs|length }})
+            </button>
+          </li>
+        </ul>
+
+        <div class="tab-content mt-3" id="adminTabsContent">
+          <!-- Users Tab -->
+          <div class="tab-pane fade show active" id="users" role="tabpanel">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="mb-0">Users</h5>
+              </div>
+              <div class="card-body">
+                {% if users %}
+                  <div class="table-responsive">
+                    <table class="table table-striped">
+                      <thead>
+                        <tr>
+                          <th>Username</th>
+                          <th>Admin</th>
+                          <th>Max Hubs</th>
+                          <th>Allowed Namespaces</th>
+                          <th>Created</th>
+                          <th>Last Activity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for user in users %}
+                          <tr>
+                            <td><strong>{{ user.name }}</strong></td>
+                            <td>
+                              {% if user.admin %}
+                                <span class="badge bg-success">Yes</span>
+                              {% else %}
+                                <span class="badge bg-secondary">No</span>
+                              {% endif %}
+                            </td>
+                            <td>{{ user.max_hubs or "Unlimited" }}</td>
+                            <td>
+                              {% if user.allowed_namespace_prefixes %}
+                                {% for prefix in user.allowed_namespace_prefixes %}
+                                  <code>{{ prefix }}</code>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                              {% else %}
+                                <span class="text-muted">All</span>
+                              {% endif %}
+                            </td>
+                            <td><small class="text-muted">{{ user.created or "N/A" }}</small></td>
+                            <td><small class="text-muted">{{ user.last_activity or "N/A" }}</small></td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% else %}
+                  <p class="text-muted">No users found.</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Hubs Tab -->
+          <div class="tab-pane fade" id="hubs" role="tabpanel">
+            <div class="card">
+              <div class="card-header">
+                <h5 class="mb-0">All Hubs</h5>
+              </div>
+              <div class="card-body">
+                {% if hubs %}
+                  <div class="table-responsive">
+                    <table class="table table-striped">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Owner</th>
+                          <th>Namespace</th>
+                          <th>Status</th>
+                          <th>URL</th>
+                          <th>Created</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for hub in hubs %}
+                          <tr>
+                            <td><a href="{{ base_url }}hubs/{{ hub.name }}">{{ hub.name }}</a></td>
+                            <td>{{ hub.owner }}</td>
+                            <td><code>{{ hub.namespace }}</code></td>
+                            <td>
+                              <span class="badge 
+                                {% if hub.status == 'running' %}bg-success
+                                {% elif hub.status == 'pending' %}bg-warning
+                                {% elif hub.status == 'error' %}bg-danger
+                                {% else %}bg-secondary
+                                {% endif %}">
+                                {{ hub.status }}
+                              </span>
+                            </td>
+                            <td>
+                              {% if hub.url %}
+                                <a href="{{ hub.url }}" target="_blank">{{ hub.url }}</a>
+                              {% else %}
+                                <span class="text-muted">N/A</span>
+                              {% endif %}
+                            </td>
+                            <td><small class="text-muted">{{ hub.created or "N/A" }}</small></td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% else %}
+                  <p class="text-muted">No hubs found.</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock main %}
+

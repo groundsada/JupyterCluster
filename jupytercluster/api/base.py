@@ -45,16 +45,21 @@ class APIHandler(web.RequestHandler):
             return None
 
     def get_current_user(self) -> Optional[str]:
-        """Get current authenticated user"""
-        # Placeholder - implement actual authentication
-        # In production, check tokens, sessions, etc.
-        return self.request.headers.get("X-User", None)
+        """Get current authenticated user from cookie (same as web handlers)"""
+        user = self.get_secure_cookie("jupytercluster_user")
+        if user:
+            return user.decode("utf-8")
+        return None
 
     def is_admin(self) -> bool:
         """Check if current user is admin"""
-        # Placeholder - implement actual admin check
-        admin_header = self.request.headers.get("X-Admin", "false")
-        return admin_header.lower() == "true"
+        user = self.get_current_user()
+        if not user:
+            return False
+        app = self.application.settings.get("jupytercluster")
+        if not app:
+            return False
+        return app.authenticator.is_admin(user)
 
     def check_hub_permission(self, hub_owner: str) -> bool:
         """Check if current user can manage a hub"""

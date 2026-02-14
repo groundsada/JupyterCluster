@@ -15,7 +15,9 @@ from traitlets.config import Application
 from . import orm
 from .api.base import APIHandler
 from .api.hubs import HubActionAPIHandler, HubAPIHandler, HubListAPIHandler
+from .api.users import UserAPIHandler, UserListAPIHandler
 from .auth import Authenticator, OAuthenticatorWrapper, SimpleAuthenticator
+from .handlers.admin import AdminHandler
 from .handlers.home import HomeHandler
 from .handlers.hubs import HubCreateHandler, HubDetailHandler
 from .handlers.login import LoginHandler, LogoutHandler
@@ -70,6 +72,11 @@ class JupyterCluster(Application):
         help="IP address to bind to",
     ).tag(config=True)
 
+    cookie_secret = Unicode(
+        "",
+        help="Secret key for secure cookies. If empty, will be generated and stored in database.",
+    ).tag(config=True)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -92,6 +99,9 @@ class JupyterCluster(Application):
         orm.Base.metadata.create_all(self.engine)
         self.Session = scoped_session(sessionmaker(bind=self.engine))
         self.db = self.Session()
+        
+        # Initialize or load cookie secret
+        self._init_cookie_secret()
 
     def _init_authenticator(self):
         """Initialize authenticator"""
@@ -139,6 +149,7 @@ class JupyterCluster(Application):
             (r"/home", HomeHandler),
             (r"/login", LoginHandler),
             (r"/logout", LogoutHandler),
+            (r"/admin", AdminHandler),
             (r"/hubs/create", HubCreateHandler),
             (r"/hubs/([^/]+)", HubDetailHandler),
             # OAuth handlers
@@ -156,7 +167,11 @@ class JupyterCluster(Application):
             (r"/api/hubs", HubListAPIHandler),
             (r"/api/hubs/([^/]+)", HubAPIHandler),
             (r"/api/hubs/([^/]+)/(start|stop)", HubActionAPIHandler),
+            (r"/api/users", UserListAPIHandler),
+            (r"/api/users/([^/]+)", UserAPIHandler),
             (r"/api/health", HealthHandler),
+            # Error handlers (must be last)
+            (r".*", NotFoundHandler),
         ]
 
         # Add OAuth handlers if using OAuthenticator
@@ -165,7 +180,7 @@ class JupyterCluster(Application):
             handlers.extend(oauth_handlers)
 
         settings = {
-            "cookie_secret": os.urandom(32).hex(),
+            "cookie_secret": self._get_cookie_secret(),
             "login_url": "/login",
             "template_path": template_path,
             "static_path": static_path,
@@ -281,6 +296,32 @@ class JupyterCluster(Application):
         logger.info(f"Starting JupyterCluster on {self.ip}:{self.port}")
         self.web_app.listen(self.port, address=self.ip)
         IOLoop.current().start()
+
+
+    def _init_cookie_secret(self):
+        """Initialize or load cookie secret from database"""
+        if self.cookie_secret:
+            # Use configured secret
+            return
+        
+        # Try to load from database
+        config_entry = self.db.query(orm.Config).filter_by(key="cookie_secret").first()
+        if config_entry:
+            self._cookie_secret = config_entry.value
+        else:
+            # Generate new secret and store it
+            secret = os.urandom(32).hex()
+            config_entry = orm.Config(key="cookie_secret", value=secret)
+            self.db.add(config_entry)
+            self.db.commit()
+            self._cookie_secret = secret
+        logger.info("Cookie secret initialized")
+
+    def _get_cookie_secret(self) -> str:
+        """Get cookie secret (from config or database)"""
+        if self.cookie_secret:
+            return self.cookie_secret
+        return getattr(self, "_cookie_secret", os.urandom(32).hex())
 
 
 class HealthHandler(APIHandler):
