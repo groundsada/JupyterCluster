@@ -63,8 +63,10 @@ class TestTemplates:
     def test_login_template_renders(self, loader):
         """Test that login template can be rendered with required variables"""
         try:
-            # Import static_url from tornado.web
-            from tornado.web import static_url
+            # static_url is a method on RequestHandler, not a standalone function
+            # Create a simple mock function for testing
+            def static_url(path):
+                return f"/static/{path}"
 
             html = loader.load("login.html").generate(
                 base_url="/",
@@ -88,7 +90,9 @@ class TestTemplates:
     def test_home_template_renders(self, loader):
         """Test that home template can be rendered"""
         try:
-            from tornado.web import static_url
+
+            def static_url(path):
+                return f"/static/{path}"
 
             html = loader.load("home.html").generate(
                 base_url="/",
@@ -109,7 +113,9 @@ class TestTemplates:
     def test_error_template_renders(self, loader):
         """Test that error template can be rendered"""
         try:
-            from tornado.web import static_url
+
+            def static_url(path):
+                return f"/static/{path}"
 
             html = loader.load("error.html").generate(
                 base_url="/",
@@ -130,7 +136,9 @@ class TestTemplates:
     def test_admin_template_renders(self, loader):
         """Test that admin template can be rendered"""
         try:
-            from tornado.web import static_url
+
+            def static_url(path):
+                return f"/static/{path}"
 
             html = loader.load("admin.html").generate(
                 base_url="/",
@@ -151,7 +159,9 @@ class TestTemplates:
     def test_hub_create_template_renders(self, loader):
         """Test that hub_create template can be rendered"""
         try:
-            from tornado.web import static_url
+
+            def static_url(path):
+                return f"/static/{path}"
 
             html = loader.load("hub_create.html").generate(
                 base_url="/",
