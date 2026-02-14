@@ -256,8 +256,9 @@ jobs:
           kubectl wait --for=condition=available deployment/jupytercluster \
             -n jupytercluster \
             --timeout=300s || true
-          # Wait for any pod to be ready (more flexible)
+          # Wait for pods using the correct label selector
           kubectl wait --for=condition=ready pod \
+            -l app.kubernetes.io/name=jupytercluster \
             -n jupytercluster \
             --timeout=300s || true
           # Show final status
@@ -267,8 +268,17 @@ jobs:
         run: |
           # Show all resources
           kubectl get all -n jupytercluster
-          # Show pod logs if any exist
-          kubectl get pods -n jupytercluster -o name | head -1 | xargs -I {} kubectl logs {} -n jupytercluster || echo "No pods to get logs from"
+          # Show pod logs if any exist (using correct label)
+          kubectl get pods -n jupytercluster -l app.kubernetes.io/name=jupytercluster -o name | head -1 | xargs -I {} kubectl logs {} -n jupytercluster || echo "No pods to get logs from"
+          # Test health endpoint if pod is running
+          POD_NAME=$(kubectl get pods -n jupytercluster -l app.kubernetes.io/name=jupytercluster -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -n "$POD_NAME" ]; then
+            echo "Testing health endpoint via port-forward..."
+            kubectl port-forward -n jupytercluster $POD_NAME 8080:8080 &
+            sleep 2
+            curl -f http://localhost:8080/api/health || echo "Health check failed"
+            pkill -f "kubectl port-forward" || true
+          fi
       
       - name: Cleanup
         if: always()
