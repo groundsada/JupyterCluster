@@ -61,6 +61,11 @@ OAUTH_SETUP.md
 QUICKSTART.md
 SECURITY.md
 TESTING_GUIDE.md
+TESTING_STEPS.md
+
+# Testing scripts
+test-*.sh
+*test*.sh
 
 # Config files with secrets
 config.yaml
