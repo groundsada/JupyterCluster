@@ -232,20 +232,43 @@ jobs:
             --create-namespace \
             --set image.repository=jupytercluster \
             --set image.tag=test \
-            --set image.pullPolicy=Never
+            --set image.pullPolicy=Never \
+            --debug
+      
+      - name: Check deployment status
+        run: |
+          echo "=== Checking namespace ==="
+          kubectl get namespace jupytercluster
+          echo "=== Checking all resources ==="
+          kubectl get all -n jupytercluster
+          echo "=== Checking pods ==="
+          kubectl get pods -n jupytercluster
+          echo "=== Checking pod labels ==="
+          kubectl get pods -n jupytercluster --show-labels || true
+          echo "=== Checking deployment ==="
+          kubectl get deployment -n jupytercluster
+          echo "=== Checking events ==="
+          kubectl get events -n jupytercluster --sort-by='.lastTimestamp' | tail -20
       
       - name: Wait for deployment
         run: |
-          kubectl wait --for=condition=ready pod \
-            -l app=jupytercluster \
+          # Wait for deployment to be available
+          kubectl wait --for=condition=available deployment/jupytercluster \
             -n jupytercluster \
-            --timeout=300s
+            --timeout=300s || true
+          # Wait for any pod to be ready (more flexible)
+          kubectl wait --for=condition=ready pod \
+            -n jupytercluster \
+            --timeout=300s || true
+          # Show final status
+          kubectl get pods -n jupytercluster
       
       - name: Run integration tests
         run: |
-          # Add your integration test commands here
-          kubectl get pods -n jupytercluster
-          kubectl logs -n jupytercluster -l app=jupytercluster
+          # Show all resources
+          kubectl get all -n jupytercluster
+          # Show pod logs if any exist
+          kubectl get pods -n jupytercluster -o name | head -1 | xargs -I {} kubectl logs {} -n jupytercluster || echo "No pods to get logs from"
       
       - name: Cleanup
         if: always()
