@@ -19,12 +19,12 @@
         <ul class="nav nav-tabs" id="adminTabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">
-              Users ({{ users|length }})
+              Users ({{ len(users) }})
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="hubs-tab" data-bs-toggle="tab" data-bs-target="#hubs" type="button" role="tab">
-              All Hubs ({{ hubs|length }})
+              All Hubs ({{ len(hubs) }})
             </button>
           </li>
         </ul>
