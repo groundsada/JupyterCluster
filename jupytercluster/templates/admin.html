@@ -1,5 +1,5 @@
 {% extends "page.html" %}
-{% block title %}Admin - JupyterCluster{% endblock %}
+{% block title %}Admin - JupyterCluster{% end %}
 {% block main %}
   <div class="container">
     <div class="row">
@@ -59,28 +59,28 @@
                                 <span class="badge bg-success">Yes</span>
                               {% else %}
                                 <span class="badge bg-secondary">No</span>
-                              {% endif %}
+                              {% end %}
                             </td>
                             <td>{{ user.max_hubs or "Unlimited" }}</td>
                             <td>
                               {% if user.allowed_namespace_prefixes %}
                                 {% for prefix in user.allowed_namespace_prefixes %}
-                                  <code>{{ prefix }}</code>{% if not loop.last %}, {% endif %}
-                                {% endfor %}
+                                  <code>{{ prefix }}</code>{% if not loop.last %}, {% end %}
+                                {% end %}
                               {% else %}
                                 <span class="text-muted">All</span>
-                              {% endif %}
+                              {% end %}
                             </td>
                             <td><small class="text-muted">{{ user.created or "N/A" }}</small></td>
                             <td><small class="text-muted">{{ user.last_activity or "N/A" }}</small></td>
                           </tr>
-                        {% endfor %}
+                        {% end %}
                       </tbody>
                     </table>
                   </div>
                 {% else %}
                   <p class="text-muted">No users found.</p>
-                {% endif %}
+                {% end %}
               </div>
             </div>
           </div>
@@ -117,7 +117,7 @@
                                 {% elif hub.status == 'pending' %}bg-warning
                                 {% elif hub.status == 'error' %}bg-danger
                                 {% else %}bg-secondary
-                                {% endif %}">
+                                {% end %}">
                                 {{ hub.status }}
                               </span>
                             </td>
@@ -126,17 +126,17 @@
                                 <a href="{{ hub.url }}" target="_blank">{{ hub.url }}</a>
                               {% else %}
                                 <span class="text-muted">N/A</span>
-                              {% endif %}
+                              {% end %}
                             </td>
                             <td><small class="text-muted">{{ hub.created or "N/A" }}</small></td>
                           </tr>
-                        {% endfor %}
+                        {% end %}
                       </tbody>
                     </table>
                   </div>
                 {% else %}
                   <p class="text-muted">No hubs found.</p>
-                {% endif %}
+                {% end %}
               </div>
             </div>
           </div>
@@ -144,5 +144,5 @@
       </div>
     </div>
   </div>
-{% endblock main %}
+{% end %}
 

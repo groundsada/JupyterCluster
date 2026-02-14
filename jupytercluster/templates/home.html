@@ -1,5 +1,5 @@
 {% extends "page.html" %}
-{% block title %}Home - JupyterCluster{% endblock %}
+{% block title %}Home - JupyterCluster{% end %}
 {% block main %}
   <div class="container">
     <div class="row">
@@ -9,7 +9,7 @@
           <p class="text-muted">You are an administrator. You can see and manage all hubs.</p>
         {% else %}
           <p class="text-muted">Manage your JupyterHub instances.</p>
-        {% endif %}
+        {% end %}
       </div>
     </div>
     
@@ -34,7 +34,7 @@
                   <small class="text-muted">Owner: {{ hub.owner }}</small><br>
                   {% if hub.description %}
                     <small>{{ hub.description }}</small>
-                  {% endif %}
+                  {% end %}
                 </p>
                 <div class="mb-2">
                   <span class="badge 
@@ -42,7 +42,7 @@
                     {% elif hub.status == 'pending' %}bg-warning
                     {% elif hub.status == 'error' %}bg-danger
                     {% else %}bg-secondary
-                    {% endif %}">
+                    {% end %}">
                     {{ hub.status }}
                   </span>
                 </div>
@@ -50,14 +50,14 @@
                   <a href="{{ hub.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
                     <i class="fa fa-external-link"></i> Open Hub
                   </a>
-                {% endif %}
+                {% end %}
                 <a href="{{ base_url }}hubs/{{ hub.name }}" class="btn btn-sm btn-outline-secondary">
                   <i class="fa fa-cog"></i> Manage
                 </a>
               </div>
             </div>
           </div>
-        {% endfor %}
+        {% end %}
       </div>
     {% else %}
       <div class="row">
@@ -67,7 +67,7 @@
           </div>
         </div>
       </div>
-    {% endif %}
+    {% end %}
   </div>
-{% endblock main %}
+{% end %}
 

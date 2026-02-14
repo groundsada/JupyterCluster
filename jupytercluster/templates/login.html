@@ -26,7 +26,7 @@
                 Warning: JupyterCluster seems to be served over an unsecured HTTP connection.
                 We strongly recommend enabling HTTPS for JupyterCluster.
               </p>
-              {% if login_error %}<p class="alert alert-danger">{{ login_error }}</p>{% endif %}
+              {% if login_error %}<p class="alert alert-danger">{{ login_error }}</p>{% end %}
               <div class="mb-3">
                 <label for="username_input" class="form-label">Username:</label>
                 <input id="username_input"
@@ -55,12 +55,12 @@
               </div>
             </div>
           </form>
-        {% endif %}
+        {% end %}
       </div>
     </div>
-{% endblock main %}
+{% end %}
 {% block script %}
-  {{ super() }}
+  {% module Template("page.html", **kwargs) %}
   <script>
     if (!window.isSecureContext) {
       // unhide http warning
@@ -70,5 +70,5 @@
       }
     }
   </script>
-{% endblock script %}
+{% end %}
 

@@ -1,5 +1,5 @@
 {% extends "page.html" %}
-{% block title %}{{ hub.name }} - JupyterCluster{% endblock %}
+{% block title %}{{ hub.name }} - JupyterCluster{% end %}
 {% block main %}
   <div class="container">
     <div class="row">
@@ -20,7 +20,7 @@
           <div class="alert alert-danger">{{ error }}</div>
         </div>
       </div>
-    {% endif %}
+    {% end %}
 
     <div class="row mt-4">
       <div class="col-md-8">
@@ -46,7 +46,7 @@
                   {% elif hub.status == 'pending' %}bg-warning
                   {% elif hub.status == 'error' %}bg-danger
                   {% else %}bg-secondary
-                  {% endif %}">
+                  {% end %}">
                   {{ hub.status }}
                 </span>
               </dd>
@@ -56,7 +56,7 @@
                 <dd class="col-sm-9">
                   <a href="{{ hub.url }}" target="_blank">{{ hub.url }}</a>
                 </dd>
-              {% endif %}
+              {% end %}
 
               <dt class="col-sm-3">Helm Chart:</dt>
               <dd class="col-sm-9"><code>{{ hub.helm_chart }}</code></dd>
@@ -64,12 +64,12 @@
               {% if hub.helm_chart_version %}
                 <dt class="col-sm-3">Chart Version:</dt>
                 <dd class="col-sm-9"><code>{{ hub.helm_chart_version }}</code></dd>
-              {% endif %}
+              {% end %}
 
               {% if hub.description %}
                 <dt class="col-sm-3">Description:</dt>
                 <dd class="col-sm-9">{{ hub.description }}</dd>
-              {% endif %}
+              {% end %}
 
               <dt class="col-sm-3">Created:</dt>
               <dd class="col-sm-9">{{ hub.created }}</dd>
@@ -94,7 +94,7 @@
                 <button type="submit" name="action" value="stop" class="btn btn-warning me-2">
                   <i class="fa fa-stop"></i> Stop Hub
                 </button>
-              {% endif %}
+              {% end %}
             </form>
             
             <form method="post" action="{{ base_url }}hubs/{{ hub.name }}" class="d-inline" 
@@ -108,5 +108,5 @@
       </div>
     </div>
   </div>
-{% endblock main %}
+{% end %}
 
