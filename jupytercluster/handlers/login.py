@@ -30,7 +30,12 @@ class LoginHandler(BaseHandler):
             return
 
         # Render login form for non-OAuth authenticators
-        self.render_template("login.html")
+        # Pass login_service and authenticator_login_url as None for simple auth
+        self.render_template(
+            "login.html",
+            login_service=None,
+            authenticator_login_url=None,
+        )
 
     async def post(self):
         """Handle form-based login"""
@@ -38,7 +43,12 @@ class LoginHandler(BaseHandler):
         password = self.get_argument("password", "")
 
         if not username or not password:
-            self.render_template("login.html", login_error="Username and password required")
+            self.render_template(
+                "login.html",
+                login_error="Username and password required",
+                login_service=None,
+                authenticator_login_url=None,
+            )
             return
 
         # Authenticate
@@ -51,7 +61,12 @@ class LoginHandler(BaseHandler):
             next_url = self.get_argument("next", "/")
             self.redirect(next_url)
         else:
-            self.render_template("login.html", login_error="Invalid username or password")
+            self.render_template(
+                "login.html",
+                login_error="Invalid username or password",
+                login_service=None,
+                authenticator_login_url=None,
+            )
 
 
 class LogoutHandler(BaseHandler):
