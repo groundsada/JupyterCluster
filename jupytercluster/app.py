@@ -18,6 +18,7 @@ from .api.hubs import HubActionAPIHandler, HubAPIHandler, HubListAPIHandler
 from .api.users import UserAPIHandler, UserListAPIHandler
 from .auth import Authenticator, OAuthenticatorWrapper, SimpleAuthenticator
 from .handlers.admin import AdminHandler
+from .handlers.error import ErrorHandler, NotFoundHandler
 from .handlers.home import HomeHandler
 from .handlers.hubs import HubCreateHandler, HubDetailHandler
 from .handlers.login import LoginHandler, LogoutHandler
