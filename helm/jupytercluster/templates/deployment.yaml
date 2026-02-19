@@ -46,6 +46,20 @@ spec:
               value: {{ .Values.config.defaultNamespacePrefix | quote }}
             - name: JUPYTERCLUSTER_DEFAULT_HELM_CHART
               value: {{ .Values.config.defaultHelmChart | quote }}
+            - name: JUPYTERCLUSTER_ALLOW_NAMESPACE_CREATION
+              value: {{ .Values.config.allowNamespaceCreation | default true | quote }}
+            {{- if .Values.config.authenticator }}
+            - name: JUPYTERCLUSTER_AUTHENTICATOR_CLASS
+              value: {{ .Values.config.authenticator.class | quote }}
+            {{- if .Values.config.authenticator.users }}
+            - name: JUPYTERCLUSTER_SIMPLEAUTHENTICATOR_USERS
+              value: {{ .Values.config.authenticator.users | toJson | quote }}
+            {{- end }}
+            {{- if .Values.config.authenticator.adminUsers }}
+            - name: JUPYTERCLUSTER_SIMPLEAUTHENTICATOR_ADMIN_USERS
+              value: {{ .Values.config.authenticator.adminUsers | toJson | quote }}
+            {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /api/health

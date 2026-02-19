@@ -4,7 +4,8 @@ import logging
 
 from tornado import web
 
-from .base import BaseHandler
+from .. import orm
+from .base import BaseHandler, DictObject
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,14 @@ class AdminHandler(BaseHandler):
 
         app = self.jupytercluster
 
+        # Rollback any pending transaction errors
+        try:
+            app.db.rollback()
+        except Exception:
+            pass
+
         # Get all users
-        users = app.db.query(app.orm.User).all()
+        users = app.db.query(orm.User).all()
         user_list = []
         for u in users:
             user_list.append(
@@ -42,7 +49,8 @@ class AdminHandler(BaseHandler):
         # Get all hubs
         all_hubs = []
         for hub_name, hub in app.hubs.items():
-            all_hubs.append(hub.to_dict())
+            hub_dict = hub.to_dict()
+            all_hubs.append(DictObject(hub_dict))
 
         self.render_template(
             "admin.html",

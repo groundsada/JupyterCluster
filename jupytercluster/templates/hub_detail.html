@@ -49,6 +49,11 @@
                   {% end %}">
                   {{ hub.status }}
                 </span>
+                {% if hub.status == 'error' %}
+                  <button type="button" class="btn btn-sm btn-outline-danger ms-2" data-bs-toggle="modal" data-bs-target="#errorModal">
+                    <i class="fa fa-exclamation-triangle"></i> View Error
+                  </button>
+                {% end %}
               </dd>
 
               {% if hub.url %}
@@ -82,10 +87,39 @@
 
         <div class="card mt-4">
           <div class="card-header">
+            <h5 class="mb-0">Helm Values Configuration</h5>
+          </div>
+          <div class="card-body">
+            <form method="post" action="{{ base_url }}hubs/{{ hub.name }}">
+              <input type="hidden" name="_xsrf" value="{{ xsrf }}" />
+              <div class="mb-3">
+                <label for="values" class="form-label">Helm Values (YAML)</label>
+                <textarea class="form-control font-monospace" 
+                          id="values" 
+                          name="values" 
+                          rows="15"
+                          placeholder="hub:
+  config:
+    JupyterHub:
+      authenticator_class: dummy">{{ hub.values_yaml if hub.values_yaml else '' }}</textarea>
+                <small class="form-text text-muted">
+                  Edit the Helm values configuration in YAML format. Leave empty to use defaults.
+                </small>
+              </div>
+              <button type="submit" class="btn btn-primary">
+                <i class="fa fa-save"></i> Update Values
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="card mt-4">
+          <div class="card-header">
             <h5 class="mb-0">Actions</h5>
           </div>
           <div class="card-body">
             <form method="post" action="{{ base_url }}hubs/{{ hub.name }}" class="d-inline">
+              <input type="hidden" name="_xsrf" value="{{ xsrf }}" />
               {% if hub.status != 'running' %}
                 <button type="submit" name="action" value="start" class="btn btn-success me-2">
                   <i class="fa fa-play"></i> Start Hub
@@ -99,6 +133,7 @@
             
             <form method="post" action="{{ base_url }}hubs/{{ hub.name }}" class="d-inline" 
                   onsubmit="return confirm('Are you sure you want to delete this hub? This action cannot be undone.');">
+              <input type="hidden" name="_xsrf" value="{{ xsrf }}" />
               <button type="submit" name="action" value="delete" class="btn btn-danger">
                 <i class="fa fa-trash"></i> Delete Hub
               </button>
@@ -108,5 +143,60 @@
       </div>
     </div>
   </div>
+
+  <!-- Error Modal -->
+  {% if hub.status == 'error' %}
+  <div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title" id="errorModalLabel">
+            <i class="fa fa-exclamation-triangle"></i> Error Details
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <h6>Hub: {{ hub.name }}</h6>
+          <p class="text-muted">The following error occurred when trying to start/stop this hub:</p>
+          {% if hub.error_message %}
+          <pre class="bg-light p-3 border rounded" style="max-height: 400px; overflow-y: auto;"><code>{{ hub.error_message }}</code></pre>
+          {% else %}
+          <div class="alert alert-warning">
+            <p><strong>No detailed error message available.</strong></p>
+            <p>This hub is in an error state, but no error details were captured. This may happen if:</p>
+            <ul>
+              <li>The error occurred before error tracking was implemented</li>
+              <li>The error was not properly captured during hub operation</li>
+            </ul>
+            <p>Try starting the hub again to capture the error details, or check the application logs.</p>
+          </div>
+          {% end %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          {% if hub.error_message %}
+          <button type="button" class="btn btn-primary" id="copyErrorBtn">
+            <i class="fa fa-copy"></i> Copy Error
+          </button>
+          {% end %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('copyErrorBtn')?.addEventListener('click', function() {
+      const errorText = document.querySelector('#errorModal pre code')?.textContent || '';
+      if (errorText) {
+        navigator.clipboard.writeText(errorText).then(function() {
+          alert('Error message copied to clipboard!');
+        }).catch(function(err) {
+          console.error('Failed to copy:', err);
+          alert('Failed to copy error message. Please select and copy manually.');
+        });
+      }
+    });
+  </script>
+  {% end %}
+
 {% end %}
 

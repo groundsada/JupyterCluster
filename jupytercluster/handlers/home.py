@@ -2,7 +2,7 @@
 
 import logging
 
-from .base import BaseHandler
+from .base import BaseHandler, DictObject
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +23,12 @@ class HomeHandler(BaseHandler):
 
         for hub_name, hub in app.hubs.items():
             hub_dict = hub.to_dict()
-            all_hubs.append(hub_dict)
+            hub_obj = DictObject(hub_dict)
+            all_hubs.append(hub_obj)
 
             # Filter by ownership unless admin
             if self.is_admin or hub.owner == user:
-                user_hubs.append(hub_dict)
+                user_hubs.append(hub_obj)
 
         # Render home page
         self.render_template(

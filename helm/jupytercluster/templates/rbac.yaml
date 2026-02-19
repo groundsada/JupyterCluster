@@ -1,18 +1,148 @@
 {{- if .Values.serviceAccount.create -}}
+{{- if .Values.rbac.clusterScoped }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: {{ include "jupytercluster.fullname" . }}
   labels:
     {{- include "jupytercluster.labels" . | nindent 4 }}
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "jupytercluster.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "jupytercluster.labels" . | nindent 4 }}
+{{- end }}
 rules:
+{{- if .Values.rbac.clusterScoped }}
+# CLUSTER-SCOPED RBAC (full permissions for development/testing)
+# Core Kubernetes resources
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["get", "list", "create", "delete"]
+  verbs: ["get", "list", "watch"{{- if .Values.config.allowNamespaceCreation }}, "create", "update", "patch", "delete"{{- end }}]
 - apiGroups: [""]
-  resources: ["pods", "services", "configmaps", "secrets"]
+  resources: ["pods", "services", "configmaps", "secrets", "serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/binding", "pods/status"]
+  verbs: ["create", "patch", "update"]
+- apiGroups: [""]
+  resources: ["bindings"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["nodes"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "watch", "patch", "update"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims", "events"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["replicationcontrollers"]
+  verbs: ["get", "list", "watch"]
+# Apps resources (Deployments, StatefulSets, DaemonSets)
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Batch resources (Jobs, CronJobs - for Helm hooks and image pullers)
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Networking resources
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses", "networkpolicies"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# RBAC resources (for JupyterHub's own RBAC)
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Policy resources (PodDisruptionBudgets)
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Storage resources (for storage class validation and CSI)
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses", "csidrivers", "csinodes", "csistoragecapacities"]
+  verbs: ["get", "list", "watch"]
+# Authentication and Authorization (for user-scheduler)
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["tokenreviews"]
+  verbs: ["create"]
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["subjectaccessreviews"]
+  verbs: ["create"]
+# Coordination (for leader election and locks)
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Events API (for event logging)
+- apiGroups: ["events.k8s.io"]
+  resources: ["events"]
+  verbs: ["create", "patch", "update"]
+# Extensions (for replicasets in older API versions)
+- apiGroups: ["extensions"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
+# Gateway API resources (if HTTPRoute is enabled, though we disable it for Kind)
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["httproutes", "gateways"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- else }}
+# NAMESPACE-SCOPED RBAC (production-safe, multi-tenant)
+# Only namespace-scoped resources - no cluster-scoped permissions
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets", "serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/binding", "pods/status"]
+  verbs: ["create", "patch", "update"]
+- apiGroups: [""]
+  resources: ["bindings"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims", "events"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["replicationcontrollers"]
+  verbs: ["get", "list", "watch"]
+# Apps resources (Deployments, StatefulSets, DaemonSets)
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Batch resources (Jobs, CronJobs - for Helm hooks and image pullers)
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Networking resources
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses", "networkpolicies"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# RBAC resources (for JupyterHub's own RBAC - namespace-scoped only)
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Policy resources (PodDisruptionBudgets)
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Coordination (for leader election and locks)
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Events API (for event logging)
+- apiGroups: ["events.k8s.io"]
+  resources: ["events"]
+  verbs: ["create", "patch", "update"]
+# Extensions (for replicasets in older API versions)
+- apiGroups: ["extensions"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
+{{- end }}
 ---
+{{- if .Values.rbac.clusterScoped }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -23,9 +153,21 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ include "jupytercluster.fullname" . }}
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "jupytercluster.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "jupytercluster.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "jupytercluster.fullname" . }}
+{{- end }}
 subjects:
 - kind: ServiceAccount
   name: {{ include "jupytercluster.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
 {{- end }}
-

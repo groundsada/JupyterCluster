@@ -32,6 +32,7 @@ class Hub(Base):
     # Status information
     status = Column(String(50), default="pending")  # pending, running, stopped, error
     url = Column(String(500))  # Access URL for the hub
+    error_message = Column(Text)  # Last error message for debugging
 
     # Metadata
     created = Column(DateTime, default=datetime.utcnow)

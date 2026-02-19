@@ -5,6 +5,7 @@ from typing import Optional
 
 from tornado import web
 
+from ..utils import parse_config
 from .base import APIHandler
 
 logger = logging.getLogger(__name__)
@@ -72,8 +73,17 @@ class HubAPIHandler(APIHandler):
 
         # Get configuration from request body
         body = self.get_json_body() or {}
-        values = body.get("values", {})
+        values_input = body.get("values")
         description = body.get("description", "")
+
+        # Support both dict and string (YAML/JSON) formats
+        if isinstance(values_input, str):
+            try:
+                values = parse_config(values_input) if values_input else {}
+            except ValueError as e:
+                raise web.HTTPError(400, f"Invalid YAML or JSON in values: {str(e)}")
+        else:
+            values = values_input if values_input is not None else {}
 
         # Create hub
         try:
@@ -110,8 +120,19 @@ class HubAPIHandler(APIHandler):
 
         # Get update data from request body
         body = self.get_json_body() or {}
-        values = body.get("values")
+        values_input = body.get("values")
         description = body.get("description")
+
+        # Support both dict and string (YAML/JSON) formats
+        values = None
+        if values_input is not None:
+            if isinstance(values_input, str):
+                try:
+                    values = parse_config(values_input) if values_input else {}
+                except ValueError as e:
+                    raise web.HTTPError(400, f"Invalid YAML or JSON in values: {str(e)}")
+            else:
+                values = values_input
 
         try:
             # Update hub values if provided

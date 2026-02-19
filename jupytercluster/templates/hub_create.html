@@ -19,6 +19,7 @@
     <div class="row mt-4">
       <div class="col-md-8">
         <form method="post" action="{{ base_url }}hubs/create">
+          <input type="hidden" name="_xsrf" value="{{ xsrf }}" />
           <div class="mb-3">
             <label for="name" class="form-label">Hub Name <span class="text-danger">*</span></label>
             <input type="text" 
@@ -31,6 +32,32 @@
             <small class="form-text text-muted">
               Must be a valid Kubernetes name (lowercase alphanumeric and hyphens only)
             </small>
+            {% if allowed_namespace_prefixes %}
+              <div class="alert alert-info mt-2 mb-0">
+                <small>
+                  <i class="fa fa-info-circle"></i> 
+                  <strong>Namespace Restriction:</strong> This hub will be created in namespace 
+                  <code>{{ default_namespace_prefix }}{{ '<hub-name>' }}</code>, 
+                  which must start with one of: 
+                  {% for prefix in allowed_namespace_prefixes %}
+                    <code>{{ prefix }}</code>{% if not (prefix == allowed_namespace_prefixes[-1]) %}, {% end %}
+                  {% end %}
+                </small>
+              </div>
+            {% end %}
+            {% if max_hubs %}
+              <div class="alert alert-warning mt-2 mb-0">
+                <small>
+                  <i class="fa fa-exclamation-triangle"></i> 
+                  <strong>Hub Limit:</strong> You have {{ current_hub_count }} / {{ max_hubs }} hubs. 
+                  {% if current_hub_count >= max_hubs %}
+                    <strong>You have reached your limit!</strong>
+                  {% else %}
+                    You can create {{ max_hubs - current_hub_count }} more hub(s).
+                  {% end %}
+                </small>
+              </div>
+            {% end %}
           </div>
 
           <div class="mb-3">
@@ -43,14 +70,26 @@
           </div>
 
           <div class="mb-3">
-            <label for="values" class="form-label">Helm Values (JSON)</label>
+            <label for="values" class="form-label">Helm Values (YAML or JSON)</label>
+            <div class="btn-group mb-2" role="group">
+              <button type="button" class="btn btn-sm btn-outline-primary" onclick="loadMinimalConfig()">
+                <i class="fa fa-magic"></i> Load Minimal Config (Kind/Dev)
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadProductionConfig()">
+                <i class="fa fa-server"></i> Load Production Config (Ceph/West)
+              </button>
+            </div>
             <textarea class="form-control font-monospace" 
                       id="values" 
                       name="values" 
                       rows="10"
-                      placeholder='{"hub": {"config": {"JupyterHub": {"authenticator_class": "dummy"}}}}'></textarea>
+                      placeholder='hub:
+  config:
+    JupyterHub:
+      authenticator_class: dummy'></textarea>
             <small class="form-text text-muted">
-              Optional JSON configuration to override default Helm values for the JupyterHub instance
+              Optional YAML or JSON configuration to override default Helm values for the JupyterHub instance.
+              Use buttons above to load pre-configured templates.
             </small>
           </div>
 
@@ -64,5 +103,90 @@
       </div>
     </div>
   </div>
+{% end %}
+{% block script %}
+<script>
+function loadMinimalConfig() {
+  const minimalConfig = `hub:
+  config:
+    JupyterHub:
+      authenticator_class: dummy
+  service:
+    type: ClusterIP
+singleuser:
+  storage:
+    type: none
+  image:
+    name: quay.io/jupyter/scipy-notebook
+    tag: latest
+  cpu:
+    limit: 1
+    guarantee: 0.1
+  memory:
+    limit: 1G
+    guarantee: 128M
+ingress:
+  enabled: false
+proxy:
+  service:
+    type: ClusterIP`;
+  
+  document.getElementById('values').value = minimalConfig;
+}
+
+function loadProductionConfig() {
+  const productionConfig = `hub:
+  config:
+    JupyterHub:
+      authenticator_class: dummy
+  service:
+    type: ClusterIP
+  db:
+    type: sqlite-pvc
+    pvc:
+      accessModes:
+      - ReadWriteOnce
+      storage: 1Gi
+      storageClassName: rook-ceph-block
+singleuser:
+  storage:
+    type: dynamic
+    capacity: 5Gi
+    dynamic:
+      storageClass: rook-ceph-block
+      pvcNameTemplate: claim-{username}{servername}
+      volumeNameTemplate: volume-{username}{servername}
+      storageAccessModes:
+      - ReadWriteOnce
+    extraVolumes: []
+    extraVolumeMounts: []
+  image:
+    name: quay.io/jupyter/scipy-notebook
+    tag: '2024-04-22'
+  cpu:
+    limit: 3
+    guarantee: 3
+  memory:
+    limit: 10G
+    guarantee: 10G
+  extraNodeAffinity:
+    required:
+    - matchExpressions:
+      - key: topology.kubernetes.io/region
+        operator: In
+        values:
+        - us-west
+ingress:
+  enabled: true
+  ingressClassName: haproxy
+  hosts:
+  - your_name.nrp-nautilus.io
+proxy:
+  service:
+    type: ClusterIP`;
+  
+  document.getElementById('values').value = productionConfig;
+}
+</script>
 {% end %}
 

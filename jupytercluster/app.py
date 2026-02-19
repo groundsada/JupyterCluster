@@ -1,5 +1,6 @@
 """Main JupyterCluster application"""
 
+import json
 import logging
 import os
 from typing import Dict, Optional
@@ -22,6 +23,7 @@ from .handlers.error import ErrorHandler, NotFoundHandler
 from .handlers.home import HomeHandler
 from .handlers.hubs import HubCreateHandler, HubDetailHandler
 from .handlers.login import LoginHandler, LogoutHandler
+from .handlers.profile import ProfileHandler
 from .hub import HubInstance
 
 try:
@@ -109,6 +111,26 @@ class JupyterCluster(Application):
         authenticator_class = self._load_class(self.authenticator_class, Authenticator)
         self.authenticator = authenticator_class(parent=self)
 
+        # Load users from environment if available (for SimpleAuthenticator)
+        if isinstance(self.authenticator, SimpleAuthenticator):
+            users_env = os.getenv("JUPYTERCLUSTER_SIMPLEAUTHENTICATOR_USERS")
+            if users_env:
+                try:
+                    users_dict = json.loads(users_env)
+                    self.authenticator.users = users_dict
+                    logger.info(f"Loaded {len(users_dict)} users from environment")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse users from environment: {e}")
+
+            admin_users_env = os.getenv("JUPYTERCLUSTER_SIMPLEAUTHENTICATOR_ADMIN_USERS")
+            if admin_users_env:
+                try:
+                    admin_users_dict = json.loads(admin_users_env)
+                    self.authenticator.admin_users = admin_users_dict
+                    logger.info(f"Loaded admin users from environment")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse admin_users from environment: {e}")
+
     def _load_class(self, class_path, base_class):
         """Load a class by path"""
         module_path, class_name = class_path.rsplit(".", 1)
@@ -150,6 +172,7 @@ class JupyterCluster(Application):
             (r"/home", HomeHandler),
             (r"/login", LoginHandler),
             (r"/logout", LogoutHandler),
+            (r"/profile", ProfileHandler),
             (r"/admin", AdminHandler),
             (r"/hubs/create", HubCreateHandler),
             (r"/hubs/([^/]+)", HubDetailHandler),
@@ -238,6 +261,18 @@ class JupyterCluster(Application):
         # Generate Helm release name
         helm_release_name = f"jupyterhub-{name}"
 
+        # Validate and sanitize values before storing
+        # This ensures httpRoute is disabled, extraVolumes/extraVolumeMounts are fixed, etc.
+        from .spawner import HubSpawner
+
+        temp_spawner = HubSpawner(
+            hub_name=name,
+            namespace=namespace,
+            owner=owner,
+            helm_chart=self.default_helm_chart,
+        )
+        sanitized_values = temp_spawner._validate_helm_values(values or {})
+
         # Create ORM object
         orm_hub = orm.Hub(
             name=name,
@@ -245,13 +280,18 @@ class JupyterCluster(Application):
             owner=owner,
             helm_release_name=helm_release_name,
             helm_chart=self.default_helm_chart,
-            values=values or {},
+            values=sanitized_values,  # Store sanitized values
             description=description,
             status="pending",
         )
 
-        self.db.add(orm_hub)
-        self.db.commit()
+        try:
+            self.db.add(orm_hub)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to create hub {name} in database: {e}")
+            raise
 
         # Create HubInstance
         hub = HubInstance(orm_hub)

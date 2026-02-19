@@ -34,7 +34,7 @@
           {% block logo %}
             <span id="jupytercluster-logo" class="navbar-brand">
               <a href="{{ base_url }}">
-                <strong>JupyterCluster</strong>
+                JupyterCluster
               </a>
             </span>
           {% end %}
@@ -49,7 +49,7 @@
               <span class="navbar-toggler-icon"></span>
             </button>
           {% end %}
-          <div class="collapse navbar-collapse" id="thenavbar">
+          <div class="collapse navbar-collapse{% if not user %} show{% end %}" id="thenavbar">
             <ul class="navbar-nav me-auto mb-0">
               {% if user %}
                 {% block nav_bar_left_items %}
@@ -60,10 +60,14 @@
                     <a class="nav-link" href="{{ base_url }}hubs/create">Create Hub</a>
                   </li>
                   {% if is_admin %}
-                    <li class="nav-item">
-                      <a class="nav-link" href="{{ base_url }}admin">Admin</a>
-                    </li>
-                  {% end %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ base_url }}profile">Profile</a>
+            </li>
+            {% if is_admin %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ base_url }}admin">Admin</a>
+            </li>
+            {% end %}
                 {% end %}
               {% end %}
             </ul>
@@ -76,14 +80,13 @@
                         <span class="me-1">{{ user }}</span>
                         <a id="logout"
                            role="button"
-                           class="btn btn-sm btn-outline-secondary"
+                           class="btn btn-sm btn-outline-contrast"
                            href="{{ logout_url }}">
-                          <i aria-hidden="true" class="fa fa-sign-out"></i> Logout
-                        </a>
+                          <i aria-hidden="true" class="fa fa-sign-out"></i>Logout</a>
                       {% else %}
                         <a id="login"
                            role="button"
-                           class="btn btn-sm btn-outline-primary"
+                           class="btn btn-sm btn-outline-contrast"
                            href="{{ login_url }}">Login</a>
                       {% end %}
                     </span>

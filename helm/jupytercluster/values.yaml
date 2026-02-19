@@ -16,6 +16,11 @@ serviceAccount:
   annotations: {}
   name: ""
 
+rbac:
+  # Set to false for namespace-scoped RBAC (safer for multi-tenant clusters)
+  # Set to true for cluster-scoped RBAC (requires cluster-admin or appropriate permissions)
+  clusterScoped: true
+
 podAnnotations: {}
 
 podSecurityContext: {}
@@ -76,6 +81,9 @@ config:
   port: 8080
   defaultNamespacePrefix: "jupyterhub-"
   defaultHelmChart: "jupyterhub/jupyterhub"
+  # Allow JupyterCluster to create new namespaces for hubs
+  # Set to false to restrict JupyterCluster to only use existing namespaces
+  allowNamespaceCreation: true
   authenticator:
     class: "jupytercluster.auth.SimpleAuthenticator"
     users: {}

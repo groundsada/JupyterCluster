@@ -48,6 +48,23 @@ class HubSpawner(LoggingConfigurable):
         help="Default Helm values to apply to all hubs",
     ).tag(config=True)
 
+    # Allow namespace creation
+    allow_namespace_creation = Unicode(
+        "true",
+        help="Whether to allow creating new namespaces (true/false). Set via JUPYTERCLUSTER_ALLOW_NAMESPACE_CREATION env var.",
+    ).tag(config=True)
+
+    def _get_allow_namespace_creation(self) -> bool:
+        """Get allow_namespace_creation as boolean"""
+        import os
+
+        # Check environment variable first
+        env_value = os.environ.get("JUPYTERCLUSTER_ALLOW_NAMESPACE_CREATION", None)
+        if env_value is not None:
+            return env_value.lower() in ("true", "1", "yes")
+        # Fall back to config value
+        return str(self.allow_namespace_creation).lower() in ("true", "1", "yes")
+
     # Security: Allowed Helm value keys (whitelist)
     allowed_helm_keys = TraitDict(
         {
@@ -56,6 +73,11 @@ class HubSpawner(LoggingConfigurable):
             "singleuser": True,
             "auth": True,
             "rbac": True,
+            "ingress": True,
+            "httpRoute": True,  # Allow but we'll disable if Gateway API not available
+            "scheduling": True,
+            "prePuller": True,
+            "cull": True,
         },
         help="Whitelist of top-level Helm value keys that users can modify",
     ).tag(config=True)
@@ -98,9 +120,56 @@ class HubSpawner(LoggingConfigurable):
             self.k8s_client = client.ApiClient()
             self.core_v1 = client.CoreV1Api()
             self.apps_v1 = client.AppsV1Api()
+            self.storage_v1 = client.StorageV1Api()
         except Exception as e:
             self.log.error(f"Failed to initialize Kubernetes client: {e}")
             raise
+
+    def _check_storage_class_exists(self, storage_class: str) -> bool:
+        """Check if a storage class exists in the cluster"""
+        try:
+            storage_classes = self.storage_v1.list_storage_class()
+            for sc in storage_classes.items:
+                if sc.metadata.name == storage_class:
+                    return True
+            return False
+        except Exception as e:
+            self.log.warning(f"Failed to check storage class {storage_class}: {e}")
+            return False
+
+    def _check_node_labels_exist(self, required_labels: Dict[str, any]) -> bool:
+        """Check if nodes have the required labels
+
+        Args:
+            required_labels: Dict of label key -> value or list of values
+
+        Returns:
+            True if at least one node has all required labels
+        """
+        try:
+            nodes = self.core_v1.list_node()
+            for node in nodes.items:
+                node_labels = node.metadata.labels or {}
+                # Check if any node has all required labels
+                has_all = True
+                for key, value in required_labels.items():
+                    if key not in node_labels:
+                        has_all = False
+                        break
+                    if isinstance(value, list):
+                        if node_labels[key] not in value:
+                            has_all = False
+                            break
+                    else:
+                        if node_labels[key] != value:
+                            has_all = False
+                            break
+                if has_all:
+                    return True
+            return False
+        except Exception as e:
+            self.log.warning(f"Failed to check node labels: {e}")
+            return False
 
     def _validate_helm_values(self, values: Dict) -> Dict:
         """Validate and sanitize Helm values to prevent security issues
@@ -126,10 +195,13 @@ class HubSpawner(LoggingConfigurable):
             else:
                 self.log.warning(f"Rejected Helm key: {key} (not in whitelist)")
 
-        # CRITICAL: Remove any namespace overrides
-        # Ensure namespace is always set to self.namespace
+        # CRITICAL: Remove any namespace from values
+        # Namespace is controlled via --namespace flag in Helm command, not in values
+        # The JupyterHub Helm chart doesn't accept namespace in values
         if "namespace" in sanitized:
-            self.log.warning("Removed user-provided namespace override")
+            self.log.warning(
+                "Removed user-provided namespace from values (namespace is set via Helm --namespace flag)"
+            )
             del sanitized["namespace"]
 
         # Remove dangerous RBAC modifications
@@ -161,6 +233,97 @@ class HubSpawner(LoggingConfigurable):
                                 )
                                 del sc[dangerous_key]
 
+                # Fix storage.extraVolumes and extraVolumeMounts - convert empty maps to empty lists
+                if "storage" in singleuser:
+                    storage = singleuser["storage"]
+                    if isinstance(storage, dict):
+                        if (
+                            "extraVolumes" in storage
+                            and isinstance(storage["extraVolumes"], dict)
+                            and len(storage["extraVolumes"]) == 0
+                        ):
+                            self.log.warning("Converting empty extraVolumes map to empty list")
+                            storage["extraVolumes"] = []
+                        if (
+                            "extraVolumeMounts" in storage
+                            and isinstance(storage["extraVolumeMounts"], dict)
+                            and len(storage["extraVolumeMounts"]) == 0
+                        ):
+                            self.log.warning("Converting empty extraVolumeMounts map to empty list")
+                            storage["extraVolumeMounts"] = []
+
+                        # Validate and fix storage class
+                        if "dynamic" in storage and isinstance(storage["dynamic"], dict):
+                            storage_class = storage["dynamic"].get("storageClass")
+                            if storage_class and not self._check_storage_class_exists(
+                                storage_class
+                            ):
+                                self.log.warning(
+                                    f"Storage class '{storage_class}' not found, using 'standard' instead"
+                                )
+                                storage["dynamic"]["storageClass"] = "standard"
+
+                        # Also check db.pvc.storageClassName
+                        if "db" in sanitized and isinstance(sanitized["db"], dict):
+                            if "pvc" in sanitized["db"] and isinstance(
+                                sanitized["db"]["pvc"], dict
+                            ):
+                                db_storage_class = sanitized["db"]["pvc"].get("storageClassName")
+                                if db_storage_class and not self._check_storage_class_exists(
+                                    db_storage_class
+                                ):
+                                    self.log.warning(
+                                        f"DB storage class '{db_storage_class}' not found, using 'standard' instead"
+                                    )
+                                    sanitized["db"]["pvc"]["storageClassName"] = "standard"
+
+                # Validate and fix node affinity
+                if "extraNodeAffinity" in singleuser and isinstance(
+                    singleuser["extraNodeAffinity"], dict
+                ):
+                    required = singleuser["extraNodeAffinity"].get("required", [])
+                    if required:
+                        # Extract required labels from node affinity
+                        required_labels = {}
+                        for match_expressions in required:
+                            if (
+                                isinstance(match_expressions, dict)
+                                and "matchExpressions" in match_expressions
+                            ):
+                                for expr in match_expressions["matchExpressions"]:
+                                    if isinstance(expr, dict) and expr.get("operator") == "In":
+                                        key = expr.get("key")
+                                        values = expr.get("values", [])
+                                        if key and values:
+                                            required_labels[key] = values
+
+                        # Check if labels exist
+                        if required_labels and not self._check_node_labels_exist(required_labels):
+                            self.log.warning(
+                                f"Node labels {required_labels} not found on any node, removing node affinity"
+                            )
+                            singleuser["extraNodeAffinity"] = {}
+
+        # Disable HTTPRoute (Gateway API) - requires CRDs that may not be available
+        # HTTPRoute is a newer feature that requires Gateway API CRDs
+        # We'll disable it to ensure compatibility with standard Kubernetes clusters
+        if "httpRoute" in sanitized:
+            http_route = sanitized["httpRoute"]
+            if isinstance(http_route, dict) and http_route.get("enabled", False):
+                self.log.warning("Disabling httpRoute (Gateway API CRDs may not be available)")
+                http_route["enabled"] = False
+
+        # Also check inside hub config
+        if "hub" in sanitized:
+            hub = sanitized["hub"]
+            if isinstance(hub, dict) and "httpRoute" in hub:
+                http_route = hub["httpRoute"]
+                if isinstance(http_route, dict) and http_route.get("enabled", False):
+                    self.log.warning(
+                        "Disabling httpRoute in hub config (Gateway API CRDs may not be available)"
+                    )
+                    http_route["enabled"] = False
+
         return sanitized
 
     async def start(self, values: Optional[Dict] = None) -> Tuple[str, str]:
@@ -184,11 +347,24 @@ class HubSpawner(LoggingConfigurable):
             sanitized_values = self._validate_helm_values(values)
             merged_values.update(sanitized_values)
 
-        # CRITICAL: Force namespace to be self.namespace (cannot be overridden)
-        # This ensures users cannot deploy to other namespaces
-        merged_values["namespace"] = self.namespace
+        # Ensure required schema fields are present (JupyterHub Helm chart requires these)
+        # These must be present even if empty to satisfy schema validation
+        required_fields = {"hub": {}, "proxy": {}, "singleuser": {}, "ingress": {}}
+        for field, default_value in required_fields.items():
+            if field not in merged_values:
+                merged_values[field] = default_value
+            elif not isinstance(merged_values[field], dict):
+                # If it's not a dict, make it a dict (shouldn't happen, but be safe)
+                self.log.warning(f"Field '{field}' is not a dict, converting to dict")
+                merged_values[field] = default_value
 
-        # Deploy using Helm
+        # CRITICAL: Do NOT add namespace to values - it's set via --namespace flag in Helm command
+        # The JupyterHub Helm chart doesn't accept namespace in values, and we control
+        # the namespace via the --namespace flag to ensure users cannot deploy to other namespaces
+        # Remove namespace from values if user somehow provided it
+        merged_values.pop("namespace", None)
+
+        # Deploy using Helm (namespace is set via --namespace flag, not in values)
         await self._deploy_helm_release(merged_values)
 
         # Wait for hub to be ready
@@ -240,6 +416,22 @@ class HubSpawner(LoggingConfigurable):
 
     async def _ensure_namespace(self):
         """Ensure the namespace exists and is properly labeled"""
+        # Check if namespace creation is allowed
+        if not self._get_allow_namespace_creation():
+            # Just verify namespace exists, don't create it
+            try:
+                ns = self.core_v1.read_namespace(name=self.namespace)
+                self.log.info(f"Namespace {self.namespace} exists (namespace creation disabled)")
+                return
+            except ApiException as e:
+                if e.status == 404:
+                    raise RuntimeError(
+                        f"Namespace {self.namespace} does not exist and namespace creation is disabled. "
+                        f"Please create the namespace manually or enable namespace creation in JupyterCluster configuration."
+                    )
+                raise
+
+        # Namespace creation is allowed - proceed with creation logic
         try:
             ns = self.core_v1.read_namespace(name=self.namespace)
             # Update labels to ensure ownership
@@ -278,6 +470,87 @@ class HubSpawner(LoggingConfigurable):
 
         # Ensure Helm repo is added
         await self._ensure_helm_repo()
+
+        # Final sanitization: Convert empty maps to lists and validate resources
+        # This must happen right before Helm deployment to catch any values that bypassed validation
+
+        # Ensure required schema fields are present (JupyterHub Helm chart requires these)
+        required_fields = {"hub": {}, "proxy": {}, "singleuser": {}, "ingress": {}}
+        for field, default_value in required_fields.items():
+            if field not in values:
+                values[field] = default_value
+            elif not isinstance(values[field], dict):
+                self.log.warning(f"Field '{field}' is not a dict, converting to dict")
+                values[field] = default_value
+
+        if "singleuser" in values and isinstance(values["singleuser"], dict):
+            if "storage" in values["singleuser"] and isinstance(
+                values["singleuser"]["storage"], dict
+            ):
+                storage = values["singleuser"]["storage"]
+                if (
+                    "extraVolumes" in storage
+                    and isinstance(storage["extraVolumes"], dict)
+                    and len(storage["extraVolumes"]) == 0
+                ):
+                    self.log.warning(
+                        "Converting empty extraVolumes map to empty list (final sanitization)"
+                    )
+                    storage["extraVolumes"] = []
+                if (
+                    "extraVolumeMounts" in storage
+                    and isinstance(storage["extraVolumeMounts"], dict)
+                    and len(storage["extraVolumeMounts"]) == 0
+                ):
+                    self.log.warning(
+                        "Converting empty extraVolumeMounts map to empty list (final sanitization)"
+                    )
+                    storage["extraVolumeMounts"] = []
+
+                # Final check: Validate storage class exists
+                if "dynamic" in storage and isinstance(storage["dynamic"], dict):
+                    storage_class = storage["dynamic"].get("storageClass")
+                    if storage_class and not self._check_storage_class_exists(storage_class):
+                        self.log.warning(
+                            f"Storage class '{storage_class}' not found in final check, using 'standard'"
+                        )
+                        storage["dynamic"]["storageClass"] = "standard"
+
+        # Final check: Validate DB storage class
+        if "db" in values and isinstance(values["db"], dict):
+            if "pvc" in values["db"] and isinstance(values["db"]["pvc"], dict):
+                db_storage_class = values["db"]["pvc"].get("storageClassName")
+                if db_storage_class and not self._check_storage_class_exists(db_storage_class):
+                    self.log.warning(
+                        f"DB storage class '{db_storage_class}' not found in final check, using 'standard'"
+                    )
+                    values["db"]["pvc"]["storageClassName"] = "standard"
+
+        # Final check: Validate node affinity
+        if "singleuser" in values and isinstance(values["singleuser"], dict):
+            if "extraNodeAffinity" in values["singleuser"] and isinstance(
+                values["singleuser"]["extraNodeAffinity"], dict
+            ):
+                required = values["singleuser"]["extraNodeAffinity"].get("required", [])
+                if required:
+                    required_labels = {}
+                    for match_expressions in required:
+                        if (
+                            isinstance(match_expressions, dict)
+                            and "matchExpressions" in match_expressions
+                        ):
+                            for expr in match_expressions["matchExpressions"]:
+                                if isinstance(expr, dict) and expr.get("operator") == "In":
+                                    key = expr.get("key")
+                                    values_list = expr.get("values", [])
+                                    if key and values_list:
+                                        required_labels[key] = values_list
+
+                    if required_labels and not self._check_node_labels_exist(required_labels):
+                        self.log.warning(
+                            f"Node labels {required_labels} not found in final check, removing node affinity"
+                        )
+                        values["singleuser"]["extraNodeAffinity"] = {}
 
         # Create temporary values file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:

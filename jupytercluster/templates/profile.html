@@ -1,0 +1,148 @@
+{% extends "page.html" %}
+{% block title %}My Profile - JupyterCluster{% end %}
+{% block main %}
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <h1>My Profile</h1>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ base_url }}home">Home</a></li>
+            <li class="breadcrumb-item active">Profile</li>
+          </ol>
+        </nav>
+      </div>
+    </div>
+
+    <div class="row mt-4">
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0">Account Information</h5>
+          </div>
+          <div class="card-body">
+            <dl class="row mb-0">
+              <dt class="col-sm-4">Username:</dt>
+              <dd class="col-sm-8"><strong>{{ user }}</strong></dd>
+              
+              <dt class="col-sm-4">Role:</dt>
+              <dd class="col-sm-8">
+                {% if is_admin %}
+                  <span class="badge bg-success">Administrator</span>
+                {% else %}
+                  <span class="badge bg-secondary">User</span>
+                {% end %}
+              </dd>
+              
+              <dt class="col-sm-4">Hub Limit:</dt>
+              <dd class="col-sm-8">
+                {% if max_hubs %}
+                  {{ current_hub_count }} / {{ max_hubs }} hubs
+                  <div class="progress mt-1" style="height: 20px;">
+                    <div class="progress-bar" role="progressbar" 
+                         style="width: {{ (current_hub_count / max_hubs * 100) if max_hubs > 0 else 0 }}%"
+                         aria-valuenow="{{ current_hub_count }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="{{ max_hubs }}">
+                      {{ current_hub_count }} / {{ max_hubs }}
+                    </div>
+                  </div>
+                {% else %}
+                  <span class="text-muted">Unlimited</span> ({{ current_hub_count }} created)
+                {% end %}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0">Namespace Access</h5>
+          </div>
+          <div class="card-body">
+            {% if allowed_namespace_prefixes %}
+              <p class="text-muted mb-2">You can only create hubs in namespaces starting with:</p>
+              <ul class="list-unstyled">
+                {% for prefix in allowed_namespace_prefixes %}
+                  <li><code class="bg-light p-1 rounded">{{ prefix }}</code></li>
+                {% end %}
+              </ul>
+              <small class="text-muted">
+                Example: You can create a hub in namespace <code>{{ allowed_namespace_prefixes[0] }}my-hub</code>
+              </small>
+            {% else %}
+              <p class="text-muted mb-0">
+                <i class="fa fa-check-circle text-success"></i> 
+                You can create hubs in any namespace (no restrictions)
+              </p>
+            {% end %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0">My Namespaces</h5>
+          </div>
+          <div class="card-body">
+            {% if accessible_namespaces %}
+              <p class="text-muted mb-3">
+                These are the namespaces where you have deployed JupyterHub instances:
+              </p>
+              <div class="table-responsive">
+                <table class="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>Namespace</th>
+                      <th>Hub Name</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for hub in hubs %}
+                      <tr>
+                        <td><code>{{ hub.namespace }}</code></td>
+                        <td>
+                          <a href="{{ base_url }}hubs/{{ hub.name }}">{{ hub.name }}</a>
+                        </td>
+                        <td>
+                          <span class="badge 
+                            {% if hub.status == 'running' %}bg-success
+                            {% elif hub.status == 'pending' %}bg-warning
+                            {% elif hub.status == 'error' %}bg-danger
+                            {% else %}bg-secondary
+                            {% end %}">
+                            {{ hub.status }}
+                          </span>
+                        </td>
+                        <td>
+                          <a href="{{ base_url }}hubs/{{ hub.name }}" class="btn btn-sm btn-outline-primary">
+                            <i class="fa fa-cog"></i> Manage
+                          </a>
+                        </td>
+                      </tr>
+                    {% end %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <div class="alert alert-info">
+                <p class="mb-0">
+                  You haven't created any hubs yet. 
+                  <a href="{{ base_url }}hubs/create">Create your first hub</a> to get started!
+                </p>
+              </div>
+            {% end %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% end %}
+

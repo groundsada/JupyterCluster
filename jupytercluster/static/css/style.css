@@ -5,9 +5,58 @@ body {
   padding-top: 0;
 }
 
+/* Navbar styling - matching JupyterHub CSS variables exactly */
+.navbar {
+  /* higher contrast nav links by default */
+  --bs-navbar-color: rgba(0, 0, 0, 0.95);
+}
+
+.navbar-nav {
+  /* no color change on nav links 
+     darken background on hover, no change to text
+     background part is in page.scss
+  */
+  --bs-nav-link-color: var(--bs-navbar-color);
+  --bs-nav-link-hover-color: var(--bs-nav-link-color);
+  --bs-nav-link-active-color: var(--bs-nav-link-color);
+}
+
+/* Ensure navbar-brand gets Bootstrap's default styling - matching JupyterHub */
 .navbar-brand {
-  font-weight: 600;
+  display: inline-block;
+  padding-top: 0.3125rem;
+  padding-bottom: 0.3125rem;
+  margin-right: 1rem;
   font-size: 1.25rem;
+  font-weight: 400;
+  line-height: inherit;
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.9);
+  text-decoration: none;
+}
+
+.navbar-brand:hover,
+.navbar-brand:focus {
+  color: rgba(0, 0, 0, 0.9);
+  text-decoration: none;
+}
+
+.navbar-brand a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.navbar-brand a:hover,
+.navbar-brand a:focus {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Nav link hover effects matching JupyterHub */
+.navbar-nav .nav-link:hover,
+.navbar-nav .nav-link:focus {
+  color: var(--bs-nav-link-hover-color);
+  background-color: rgba(var(--bs-emphasis-color-rgb), 0.1);
 }
 
 .card {
@@ -40,18 +89,97 @@ body {
   padding: 0.35em 0.65em;
 }
 
+/* Login form styling - matching JupyterHub */
 #login-main {
-  max-width: 500px;
-  margin: 2rem auto;
+  display: table;
+  height: 80vh;
+  width: 100%;
+}
+
+#login-main #insecure-login-warning {
+  padding: 10px;
+}
+
+#login-main .service-login {
+  text-align: center;
+  vertical-align: middle;
+  margin: auto;
+}
+
+#login-main form {
+  vertical-align: middle;
+  margin: auto;
+  width: 350px;
+}
+
+.login_error {
+  color: orangered;
+  font-weight: bold;
+  text-align: center;
 }
 
 .auth-form-header {
-  text-align: center;
-  margin-bottom: 1.5rem;
+  padding: 10px 20px;
+  color: #fff;
+  background: #f37626; /* Jupyter orange */
+  font-size: large;
+  border-radius: 6px 6px 0 0;
+}
+
+.auth-form-header > h1 {
+  font-size: inherit;
+  font-weight: inherit;
+  margin: 0;
 }
 
 .auth-form-body {
-  padding: 1rem;
+  padding: 20px;
+  border: thin silver solid;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+}
+
+.auth-form-body label {
+  display: block;
+  margin-top: 15px;
+  margin-bottom: 5px;
+}
+
+.auth-form-body label:first-child {
+  margin-top: 0;
+}
+
+.auth-form-body .form-control {
+  margin-bottom: 10px;
+}
+
+.auth-form-body .input-group {
+  margin-bottom: 10px;
+}
+
+/* Jupyter button styling */
+.btn-jupyter {
+  background-color: #f37626;
+  border-color: #f37626;
+  color: #fff;
+}
+
+.btn-jupyter:hover,
+.btn-jupyter:focus {
+  background-color: #d65f1f;
+  border-color: #d65f1f;
+  color: #fff;
+}
+
+.feedback-container {
+  position: relative;
+}
+
+.feedback-widget {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 #insecure-login-warning {
@@ -62,5 +190,71 @@ body {
   background-color: transparent;
   padding: 0;
   margin-bottom: 1rem;
+}
+
+/* Form control focus styling - matching JupyterHub */
+.form-control:focus {
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075), 0 0 8px #f37626;
+  border-color: #f37626;
+  outline-color: #f37626;
+}
+
+/* Password toggle button styling - matching Bootstrap input-group-text exactly */
+.input-group-text {
+  display: flex;
+  align-items: center;
+  padding: var(--bs-input-padding-y) var(--bs-input-padding-x);
+  font-size: var(--bs-font-size-base);
+  font-weight: 400;
+  line-height: var(--bs-body-line-height);
+  color: var(--bs-body-color);
+  text-align: center;
+  white-space: nowrap;
+  background-color: var(--bs-tertiary-bg);
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+}
+
+.input-group > :not(:first-child):not(.dropdown-menu):not(.valid-tooltip):not(.valid-feedback):not(.invalid-tooltip):not(.invalid-feedback) {
+  margin-left: calc(var(--bs-border-width) * -1);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.input-group-text button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-group-text:hover {
+  z-index: 1;
+}
+
+.input-group-text i {
+  font-size: 1rem;
+}
+
+/* Button variant for contrast (matching JupyterHub) */
+.btn-outline-contrast {
+  --bs-btn-color: var(--bs-body-color);
+  --bs-btn-border-color: var(--bs-border-color);
+  --bs-btn-hover-color: var(--bs-body-bg);
+  --bs-btn-hover-bg: var(--bs-body-color);
+  --bs-btn-hover-border-color: var(--bs-body-color);
+  --bs-btn-focus-shadow-rgb: var(--bs-body-color-rgb);
+  --bs-btn-active-color: var(--bs-body-bg);
+  --bs-btn-active-bg: var(--bs-body-color);
+  --bs-btn-active-border-color: var(--bs-body-color);
+  --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+  --bs-btn-disabled-color: var(--bs-body-color);
+  --bs-btn-disabled-bg: transparent;
+  --bs-btn-disabled-border-color: var(--bs-border-color);
+  --bs-gradient: none;
 }
 

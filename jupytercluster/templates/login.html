@@ -1,63 +1,72 @@
 {% extends "page.html" %}
+{% block login_widget %}
+{% end %}
 {% block main %}
   <div id="login-main" class="container">
-    <div class="login-container">
-        {% if login_service %}
-          <div class="service-login text-center">
-            <p id='insecure-login-warning' class='hidden alert alert-warning'>
-              Warning: JupyterCluster seems to be served over an unsecured HTTP connection.
-              We strongly recommend enabling HTTPS for JupyterCluster.
-            </p>
-            <a role="button"
-               class='btn btn-primary btn-lg'
-               href='{{ authenticator_login_url | safe }}'>Sign in with {{ login_service }}</a>
-          </div>
-        {% else %}
-          <form action="{{ base_url }}login"
-                method="post"
-                role="form"
-                class="mx-auto"
-                style="max-width: 400px;">
-            <div class="auth-form-header mb-4">
-              <h1>Sign in</h1>
-            </div>
-            <div class='auth-form-body'>
-              <p id='insecure-login-warning' class='hidden alert alert-warning'>
-                Warning: JupyterCluster seems to be served over an unsecured HTTP connection.
-                We strongly recommend enabling HTTPS for JupyterCluster.
-              </p>
-              {% if login_error %}<p class="alert alert-danger">{{ login_error }}</p>{% end %}
-              <div class="mb-3">
-                <label for="username_input" class="form-label">Username:</label>
-                <input id="username_input"
-                       type="text"
-                       autocapitalize="off"
-                       autocorrect="off"
-                       autocomplete="username"
-                       class="form-control"
-                       name="username"
-                       value="{{ username }}"
-                       autofocus="autofocus" />
-              </div>
-              <div class="mb-3">
-                <label for="password_input" class="form-label">Password:</label>
-                <input id="password_input"
-                       type="password"
-                       class="form-control"
-                       autocomplete="current-password"
-                       name="password" />
-              </div>
-              <div class="mb-3">
-                <input id="login_submit"
-                       type="submit"
-                       class='btn btn-primary form-control'
-                       value='Sign in' />
-              </div>
-            </div>
-          </form>
-        {% end %}
+    {% if login_service %}
+      <div class="service-login">
+        <p id='insecure-login-warning' class='hidden alert alert-warning'>
+          Warning: JupyterCluster seems to be served over an unsecured HTTP connection.
+          We strongly recommend enabling HTTPS for JupyterCluster.
+        </p>
+        <a role="button"
+           class='btn btn-jupyter btn-lg'
+           href='{{ authenticator_login_url | safe }}'>Sign in with {{ login_service }}</a>
       </div>
-    </div>
+    {% else %}
+      <form action="{{ base_url }}login"
+            method="post"
+            role="form">
+        <div class="auth-form-header">
+          <h1>Sign in</h1>
+        </div>
+        <div class='auth-form-body m-auto'>
+          <p id='insecure-login-warning' class='hidden alert alert-warning'>
+            Warning: JupyterCluster seems to be served over an unsecured HTTP connection.
+            We strongly recommend enabling HTTPS for JupyterCluster.
+          </p>
+          {% if login_error %}<p class="login_error">{{ login_error }}</p>{% end %}
+          <input type="hidden" name="_xsrf" value="{{ xsrf }}" />
+          <label for="username_input">Username:</label>
+          <input id="username_input"
+                 type="text"
+                 autocapitalize="off"
+                 autocorrect="off"
+                 autocomplete="username"
+                 class="form-control"
+                 name="username"
+                 value="{{ username }}"
+                 autofocus="autofocus" />
+          <label for="password_input">Password:</label>
+          <div class="input-group">
+            <input id="password_input"
+                   type="password"
+                   class="form-control"
+                   autocomplete="current-password"
+                   name="password" />
+            <button type="button"
+                    id="toggle_password_visibility"
+                    class="input-group-text"
+                    aria-controls="password_input"
+                    aria-pressed="false"
+                    title="Show password">
+              <i class="fa fa-eye" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="feedback-container">
+            <input id="login_submit"
+                   type="submit"
+                   class='btn btn-jupyter form-control'
+                   value='Sign in'
+                   tabindex="3" />
+            <div class="feedback-widget hidden">
+              <i class="fa fa-spinner"></i>
+            </div>
+          </div>
+        </div>
+      </form>
+    {% end %}
+  </div>
 {% end %}
 {% block script %}
   <script>
@@ -68,6 +77,33 @@
         warning.className = warning.className.replace(/\bhidden\b/, '');
       }
     }
+
+    // Password visibility toggle
+    document.addEventListener("DOMContentLoaded", function() {
+      const toggle = document.getElementById("toggle_password_visibility");
+      if (toggle) {
+        const pwd = document.getElementById("password_input");
+        const icon = toggle.querySelector("i");
+
+        toggle.addEventListener("click", function() {
+          const isHidden = pwd.type === "password";
+          pwd.type = isHidden ? "text" : "password";
+          icon.className = isHidden ? "fa fa-eye-slash" : "fa fa-eye";
+          toggle.setAttribute("aria-pressed", isHidden ? "true" : "false");
+          toggle.setAttribute("title", isHidden ? "Hide password" : "Show password");
+        });
+      }
+    });
+
+    // setup onSubmit feedback
+    $(document).ready(function() {
+      $('form').submit(function(e) {
+        var form = $(e.target);
+        form.find('.feedback-container>input').attr('disabled', true);
+        form.find('.feedback-container>*').toggleClass('hidden');
+        form.find('.feedback-widget>*').toggleClass('fa-pulse');
+      });
+    });
   </script>
 {% end %}
 
