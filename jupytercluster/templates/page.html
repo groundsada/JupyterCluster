@@ -59,15 +59,14 @@
                   <li class="nav-item">
                     <a class="nav-link" href="{{ base_url }}hubs/create">Create Hub</a>
                   </li>
+                  <li class="nav-item">
+                    <a class="nav-link" href="{{ base_url }}profile">Profile</a>
+                  </li>
                   {% if is_admin %}
-            <li class="nav-item">
-              <a class="nav-link" href="{{ base_url }}profile">Profile</a>
-            </li>
-            {% if is_admin %}
-            <li class="nav-item">
-              <a class="nav-link" href="{{ base_url }}admin">Admin</a>
-            </li>
-            {% end %}
+                    <li class="nav-item">
+                      <a class="nav-link" href="{{ base_url }}admin">Admin</a>
+                    </li>
+                  {% end %}
                 {% end %}
               {% end %}
             </ul>
