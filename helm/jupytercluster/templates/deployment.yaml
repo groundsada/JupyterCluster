@@ -60,6 +60,10 @@ spec:
               value: {{ .Values.config.authenticator.adminUsers | toJson | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.config.defaultUsers }}
+            - name: JUPYTERCLUSTER_DEFAULT_USERS
+              value: {{ .Values.config.defaultUsers | toJson | quote }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /api/health

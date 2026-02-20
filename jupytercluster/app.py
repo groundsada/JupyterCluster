@@ -106,6 +106,42 @@ class JupyterCluster(Application):
         # Initialize or load cookie secret
         self._init_cookie_secret()
 
+        # Initialize default users from environment
+        self._init_users()
+
+    def _init_users(self):
+        """Initialize default users from environment variable"""
+        users_env = os.getenv("JUPYTERCLUSTER_DEFAULT_USERS")
+        if not users_env:
+            return
+
+        try:
+            users_config = json.loads(users_env)
+            for username, user_data in users_config.items():
+                # Check if user already exists
+                user = self.db.query(orm.User).filter_by(name=username).first()
+                if not user:
+                    user = orm.User(
+                        name=username,
+                        admin=user_data.get("admin", False),
+                        allowed_namespaces=user_data.get("allowed_namespaces", []),
+                        max_hubs=user_data.get("max_hubs"),
+                    )
+                    self.db.add(user)
+                    logger.info(f"Created default user: {username} (admin={user.admin}, namespaces={user.allowed_namespaces})")
+                else:
+                    # Update existing user
+                    user.admin = user_data.get("admin", user.admin)
+                    user.allowed_namespaces = user_data.get("allowed_namespaces", user.allowed_namespaces)
+                    user.max_hubs = user_data.get("max_hubs", user.max_hubs)
+                    logger.info(f"Updated default user: {username}")
+            self.db.commit()
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse default users from environment: {e}")
+        except Exception as e:
+            logger.error(f"Failed to initialize default users: {e}")
+            self.db.rollback()
+
     def _init_authenticator(self):
         """Initialize authenticator"""
         authenticator_class = self._load_class(self.authenticator_class, Authenticator)
@@ -223,17 +259,19 @@ class JupyterCluster(Application):
         owner: str,
         values: Optional[Dict] = None,
         description: str = "",
+        namespace: Optional[str] = None,
     ) -> HubInstance:
         """Create a new hub instance
 
         SECURITY:
-        - Namespace is derived from hub name, not user input
+        - Namespace is validated against user's allowed_namespaces
+        - If namespace not provided, it's derived from hub name using default_namespace_prefix
         - Values are validated and sanitized in HubSpawner
         - Owner is stored and used for permission checks
         """
-        # CRITICAL: Generate namespace from hub name (not user input)
-        # This ensures users cannot deploy to arbitrary namespaces
-        namespace = f"{self.default_namespace_prefix}{name}"
+        # Use provided namespace or derive from hub name
+        if namespace is None:
+            namespace = f"{self.default_namespace_prefix}{name}"
 
         # Validate namespace name (Kubernetes requirements)
         if not self._is_valid_namespace_name(namespace):
@@ -250,13 +288,10 @@ class JupyterCluster(Application):
         if user and user.max_hubs and len(user_hubs) >= user.max_hubs:
             raise ValueError(f"User {owner} has reached maximum hub limit of {user.max_hubs}")
 
-        # Validate namespace prefix restrictions (if configured)
-        if user and user.allowed_namespace_prefixes:
-            allowed = any(
-                namespace.startswith(prefix) for prefix in user.allowed_namespace_prefixes
-            )
-            if not allowed:
-                raise ValueError(f"User {owner} is not allowed to deploy to namespace {namespace}")
+        # Validate namespace restrictions (if configured) - exact match
+        if user and user.allowed_namespaces:
+            if namespace not in user.allowed_namespaces:
+                raise ValueError(f"User {owner} is not allowed to deploy to namespace {namespace}. Allowed namespaces: {user.allowed_namespaces}")
 
         # Generate Helm release name
         helm_release_name = f"jupyterhub-{name}"

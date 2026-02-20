@@ -75,6 +75,7 @@ class HubAPIHandler(APIHandler):
         body = self.get_json_body() or {}
         values_input = body.get("values")
         description = body.get("description", "")
+        namespace = body.get("namespace")  # Optional namespace override
 
         # Support both dict and string (YAML/JSON) formats
         if isinstance(values_input, str):
@@ -92,6 +93,7 @@ class HubAPIHandler(APIHandler):
                 owner=current_user,
                 values=values,
                 description=description,
+                namespace=namespace,
             )
 
             self.set_status(201)

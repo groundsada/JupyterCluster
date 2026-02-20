@@ -74,7 +74,7 @@ class User(Base):
     admin = Column(Boolean, default=False, nullable=False)
 
     # Namespace restrictions (optional - for limiting which namespaces users can deploy to)
-    allowed_namespace_prefixes = Column(JSON, default=list)  # List of allowed namespace prefixes
+    allowed_namespaces = Column(JSON, default=list)  # List of allowed namespace names (exact match)
     max_hubs = Column(Integer, default=None)  # Maximum number of hubs user can create
 
     created = Column(DateTime, default=datetime.utcnow)

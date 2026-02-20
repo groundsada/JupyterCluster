@@ -88,4 +88,7 @@ config:
     class: "jupytercluster.auth.SimpleAuthenticator"
     users: {}
     adminUsers: {}
+  # Default users with their allowed namespaces
+  # Format: { username: { admin: false, allowed_namespaces: ["ns1", "ns2"], max_hubs: 3 } }
+  defaultUsers: {}
 
