@@ -128,11 +128,15 @@ class JupyterCluster(Application):
                         max_hubs=user_data.get("max_hubs"),
                     )
                     self.db.add(user)
-                    logger.info(f"Created default user: {username} (admin={user.admin}, namespaces={user.allowed_namespaces})")
+                    logger.info(
+                        f"Created default user: {username} (admin={user.admin}, namespaces={user.allowed_namespaces})"
+                    )
                 else:
                     # Update existing user
                     user.admin = user_data.get("admin", user.admin)
-                    user.allowed_namespaces = user_data.get("allowed_namespaces", user.allowed_namespaces)
+                    user.allowed_namespaces = user_data.get(
+                        "allowed_namespaces", user.allowed_namespaces
+                    )
                     user.max_hubs = user_data.get("max_hubs", user.max_hubs)
                     logger.info(f"Updated default user: {username}")
             self.db.commit()
@@ -291,7 +295,9 @@ class JupyterCluster(Application):
         # Validate namespace restrictions (if configured) - exact match
         if user and user.allowed_namespaces:
             if namespace not in user.allowed_namespaces:
-                raise ValueError(f"User {owner} is not allowed to deploy to namespace {namespace}. Allowed namespaces: {user.allowed_namespaces}")
+                raise ValueError(
+                    f"User {owner} is not allowed to deploy to namespace {namespace}. Allowed namespaces: {user.allowed_namespaces}"
+                )
 
         # Generate Helm release name
         helm_release_name = f"jupyterhub-{name}"
