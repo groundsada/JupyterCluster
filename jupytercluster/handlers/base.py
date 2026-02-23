@@ -86,7 +86,7 @@ class BaseHandler(web.RequestHandler):
         # Hub create template specific variables
         if name == "hub_create.html":
             kwargs.setdefault("error", None)
-            kwargs.setdefault("allowed_namespace_prefixes", [])
+            kwargs.setdefault("allowed_namespaces", [])
             kwargs.setdefault("max_hubs", None)
             kwargs.setdefault("current_hub_count", 0)
             kwargs.setdefault(

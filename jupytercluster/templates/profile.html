@@ -62,15 +62,15 @@
             <h5 class="mb-0">Namespace Access</h5>
           </div>
           <div class="card-body">
-            {% if allowed_namespace_prefixes %}
+            {% if allowed_namespaces %}
               <p class="text-muted mb-2">You can only create hubs in namespaces starting with:</p>
               <ul class="list-unstyled">
-                {% for prefix in allowed_namespace_prefixes %}
+                {% for prefix in allowed_namespaces %}
                   <li><code class="bg-light p-1 rounded">{{ prefix }}</code></li>
                 {% end %}
               </ul>
               <small class="text-muted">
-                Example: You can create a hub in namespace <code>{{ allowed_namespace_prefixes[0] }}my-hub</code>
+                Example: You can create a hub in namespace <code>{{ allowed_namespaces[0] }}my-hub</code>
               </small>
             {% else %}
               <p class="text-muted mb-0">

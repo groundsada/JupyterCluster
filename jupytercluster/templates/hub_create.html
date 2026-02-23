@@ -32,15 +32,15 @@
             <small class="form-text text-muted">
               Must be a valid Kubernetes name (lowercase alphanumeric and hyphens only)
             </small>
-            {% if allowed_namespace_prefixes %}
+            {% if allowed_namespaces %}
               <div class="alert alert-info mt-2 mb-0">
                 <small>
                   <i class="fa fa-info-circle"></i> 
                   <strong>Namespace Restriction:</strong> This hub will be created in namespace 
                   <code>{{ default_namespace_prefix }}{{ '<hub-name>' }}</code>, 
                   which must start with one of: 
-                  {% for prefix in allowed_namespace_prefixes %}
-                    <code>{{ prefix }}</code>{% if not (prefix == allowed_namespace_prefixes[-1]) %}, {% end %}
+                  {% for prefix in allowed_namespaces %}
+                    <code>{{ prefix }}</code>{% if not (prefix == allowed_namespaces[-1]) %}, {% end %}
                   {% end %}
                 </small>
               </div>

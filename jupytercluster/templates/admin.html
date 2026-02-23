@@ -63,9 +63,9 @@
                             </td>
                             <td>{{ u.max_hubs or "Unlimited" }}</td>
                             <td>
-                              {% if u.allowed_namespace_prefixes %}
-                                {% for prefix in u.allowed_namespace_prefixes %}
-                                  <code>{{ prefix }}</code>{% if not (prefix == u.allowed_namespace_prefixes[-1]) %}, {% end %}
+                              {% if u.allowed_namespaces %}
+                                {% for prefix in u.allowed_namespaces %}
+                                  <code>{{ prefix }}</code>{% if not (prefix == u.allowed_namespaces[-1]) %}, {% end %}
                                 {% end %}
                               {% else %}
                                 <span class="text-muted">All</span>

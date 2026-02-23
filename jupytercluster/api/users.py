@@ -31,7 +31,7 @@ class UserListAPIHandler(APIHandler):
                     "name": u.name,
                     "admin": u.admin,
                     "max_hubs": u.max_hubs,
-                    "allowed_namespace_prefixes": u.allowed_namespace_prefixes or [],
+                    "allowed_namespaces": u.allowed_namespaces or [],
                     "created": u.created.isoformat() if u.created else None,
                     "last_activity": u.last_activity.isoformat() if u.last_activity else None,
                 }
@@ -63,7 +63,7 @@ class UserAPIHandler(APIHandler):
                 "name": user.name,
                 "admin": user.admin,
                 "max_hubs": user.max_hubs,
-                "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
+                "allowed_namespaces": user.allowed_namespaces or [],
                 "created": user.created.isoformat() if user.created else None,
                 "last_activity": user.last_activity.isoformat() if user.last_activity else None,
             }
@@ -89,14 +89,14 @@ class UserAPIHandler(APIHandler):
         body = self.get_json_body() or {}
         admin = body.get("admin", False)
         max_hubs = body.get("max_hubs")
-        allowed_namespace_prefixes = body.get("allowed_namespace_prefixes")
+        allowed_namespaces = body.get("allowed_namespaces")
 
         try:
             user = orm.User(
                 name=username,
                 admin=admin,
                 max_hubs=max_hubs,
-                allowed_namespace_prefixes=allowed_namespace_prefixes,
+                allowed_namespaces=allowed_namespaces,
             )
             app.db.add(user)
             app.db.commit()
@@ -107,7 +107,7 @@ class UserAPIHandler(APIHandler):
                     "name": user.name,
                     "admin": user.admin,
                     "max_hubs": user.max_hubs,
-                    "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
+                    "allowed_namespaces": user.allowed_namespaces or [],
                 }
             )
         except Exception as e:
@@ -138,8 +138,8 @@ class UserAPIHandler(APIHandler):
                 user.admin = body["admin"]
             if "max_hubs" in body:
                 user.max_hubs = body["max_hubs"]
-            if "allowed_namespace_prefixes" in body:
-                user.allowed_namespace_prefixes = body["allowed_namespace_prefixes"]
+            if "allowed_namespaces" in body:
+                user.allowed_namespaces = body["allowed_namespaces"]
 
             app.db.commit()
 
@@ -148,7 +148,7 @@ class UserAPIHandler(APIHandler):
                     "name": user.name,
                     "admin": user.admin,
                     "max_hubs": user.max_hubs,
-                    "allowed_namespace_prefixes": user.allowed_namespace_prefixes or [],
+                    "allowed_namespaces": user.allowed_namespaces or [],
                 }
             )
         except Exception as e:

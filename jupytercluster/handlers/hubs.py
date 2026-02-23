@@ -25,17 +25,17 @@ class HubCreateHandler(BaseHandler):
         from .. import orm
 
         db_user = app.db.query(orm.User).filter_by(name=user).first()
-        allowed_namespace_prefixes = []
+        allowed_namespaces = []
         max_hubs = None
         current_hub_count = 0
         if db_user:
-            allowed_namespace_prefixes = db_user.allowed_namespace_prefixes or []
+            allowed_namespaces = db_user.allowed_namespaces or []
             max_hubs = db_user.max_hubs
             current_hub_count = len([h for h in app.hubs.values() if h.owner == user])
 
         self.render_template(
             "hub_create.html",
-            allowed_namespace_prefixes=allowed_namespace_prefixes,
+            allowed_namespaces=allowed_namespaces,
             max_hubs=max_hubs,
             current_hub_count=current_hub_count,
         )

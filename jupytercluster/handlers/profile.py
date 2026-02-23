@@ -32,10 +32,10 @@ class ProfileHandler(BaseHandler):
                 user_hubs.append(hub_obj)
 
         # Get user's namespace restrictions
-        allowed_namespace_prefixes = []
+        allowed_namespaces = []
         max_hubs = None
         if db_user:
-            allowed_namespace_prefixes = db_user.allowed_namespace_prefixes or []
+            allowed_namespaces = db_user.allowed_namespaces or []
             max_hubs = db_user.max_hubs
 
         # Get all namespaces user has access to (based on their hubs)
@@ -46,7 +46,7 @@ class ProfileHandler(BaseHandler):
             "profile.html",
             user=user,
             is_admin=self.is_admin,
-            allowed_namespace_prefixes=allowed_namespace_prefixes,
+            allowed_namespaces=allowed_namespaces,
             max_hubs=max_hubs,
             current_hub_count=len(user_hubs),
             accessible_namespaces=accessible_namespaces,
