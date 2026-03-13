@@ -9,12 +9,13 @@ Prints the raw token to stdout — capture it as the JUPYTERCLUSTER_TOKEN
 environment variable for the pytest E2E suite.
 """
 
+import os
 import sys
 
 from jupytercluster import orm
 from jupytercluster.dbutil import new_session_factory
 
-DB_URL = "sqlite:////data/jupytercluster.db"
+DB_URL = os.environ.get("JUPYTERCLUSTER_DB_URL", "sqlite:////data/jupytercluster.db")
 USERNAME = sys.argv[1] if len(sys.argv) > 1 else "admin"
 TOKEN_NAME = sys.argv[2] if len(sys.argv) > 2 else "e2e-bootstrap"
 
