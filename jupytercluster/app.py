@@ -1,21 +1,23 @@
 """Main JupyterCluster application"""
 
+import asyncio
 import json
 import logging
 import os
 from typing import Dict, Optional
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session, sessionmaker
 from tornado import web
-from tornado.ioloop import IOLoop
-from traitlets import Dict as TraitDict
-from traitlets import Integer, Unicode, default
+from tornado.ioloop import IOLoop, PeriodicCallback
+from traitlets import Bool, Dict as TraitDict
+from traitlets import Integer, List as TraitList, Unicode, default
 from traitlets.config import Application
 
 from . import orm
 from .api.base import APIHandler
+from .api.events import HubEventsAPIHandler
 from .api.hubs import HubActionAPIHandler, HubAPIHandler, HubListAPIHandler
+from .api.info import InfoAPIHandler
+from .api.tokens import UserTokenAPIHandler, UserTokenListAPIHandler
 from .api.users import UserAPIHandler, UserListAPIHandler
 from .auth import Authenticator, OAuthenticatorWrapper, SimpleAuthenticator
 from .handlers.admin import AdminHandler
@@ -64,6 +66,41 @@ class JupyterCluster(Application):
         help="Default Helm chart for hubs",
     ).tag(config=True)
 
+    allow_user_namespace_management = Bool(
+        True,
+        help=(
+            "Allow non-admin users to create/delete hubs (which create/delete namespaces). "
+            "When False, only admins can create or delete hubs. "
+            "Can be overridden per-user via can_create_namespaces / can_delete_namespaces."
+        ),
+    ).tag(config=True)
+
+    cors_allow_origins = TraitList(
+        [],
+        help=(
+            "Origins permitted for CORS requests to the API. "
+            "Use ['*'] to allow all origins (not recommended in production). "
+            "Empty list (default) disables CORS headers."
+        ),
+    ).tag(config=True)
+
+    allow_namespace_deletion = Bool(
+        False,
+        help=(
+            "When True, deleting a hub also deletes its Kubernetes namespace. "
+            "When False (default), the namespace is left intact after hub deletion."
+        ),
+    ).tag(config=True)
+
+    # Background polling — mirrors JupyterHub's poll_interval on spawners
+    poll_interval = Integer(
+        30,
+        help=(
+            "Interval in seconds between hub health-status polls. "
+            "Set to 0 to disable background polling."
+        ),
+    ).tag(config=True)
+
     # Server configuration
     port = Integer(
         8080,
@@ -83,6 +120,13 @@ class JupyterCluster(Application):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        # Mirrors JupyterHub: all PeriodicCallback instances stored here so they
+        # can be started / stopped as a group and inspected in tests.
+        self._periodic_callbacks: Dict[str, PeriodicCallback] = {}
+
+        # Apply env var overrides for bool settings not handled by traitlets env loading
+        self._apply_env_overrides()
+
         # Initialize database
         self._init_database()
 
@@ -96,12 +140,84 @@ class JupyterCluster(Application):
         # Initialize web application
         self._init_web_app()
 
+    def _apply_env_overrides(self):
+        """Apply environment variable overrides for settings not covered by traitlets config loading"""
+        def _parse_bool(val: str) -> bool:
+            return val.lower() in ("true", "1", "yes")
+
+        env = os.environ
+        if "JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT" in env:
+            self.allow_user_namespace_management = _parse_bool(
+                env["JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT"]
+            )
+        if "JUPYTERCLUSTER_ALLOW_NAMESPACE_DELETION" in env:
+            self.allow_namespace_deletion = _parse_bool(
+                env["JUPYTERCLUSTER_ALLOW_NAMESPACE_DELETION"]
+            )
+        if "JUPYTERCLUSTER_CORS_ALLOW_ORIGINS" in env:
+            raw = env["JUPYTERCLUSTER_CORS_ALLOW_ORIGINS"].strip()
+            if raw:
+                self.cors_allow_origins = [o.strip() for o in raw.split(",") if o.strip()]
+
+    def _can_user_create_namespace(self, username: str) -> bool:
+        """Check whether a user is permitted to create namespaces (and thus hubs).
+
+        Resolution order:
+        1. Admins are always allowed.
+        2. Per-user ``can_create_namespaces`` if set (not None).
+        3. Global ``allow_user_namespace_management``.
+        """
+        user = self.db.query(orm.User).filter_by(name=username).first()
+        if user and user.admin:
+            return True
+        if user and user.can_create_namespaces is not None:
+            return bool(user.can_create_namespaces)
+        return self.allow_user_namespace_management
+
+    def _can_user_delete_namespace(self, username: str) -> bool:
+        """Check whether a user is permitted to delete namespaces (and thus hubs).
+
+        Resolution order:
+        1. Admins are always allowed.
+        2. Per-user ``can_delete_namespaces`` if set (not None).
+        3. Global ``allow_user_namespace_management``.
+        """
+        user = self.db.query(orm.User).filter_by(name=username).first()
+        if user and user.admin:
+            return True
+        if user and user.can_delete_namespaces is not None:
+            return bool(user.can_delete_namespaces)
+        return self.allow_user_namespace_management
+
     def _init_database(self):
-        """Initialize database connection"""
-        self.engine = create_engine(self.db_url, echo=False)
+        """Initialize database, run Alembic migrations, and open a session.
+
+        Follows JupyterHub's database initialisation pattern:
+        1. Run ``alembic upgrade head`` so pending migrations are applied before
+           any ORM code touches the schema.
+        2. Create the engine + session factory via ``dbutil.new_session_factory``
+           which sets expire_on_commit=False and pool_pre_ping=True (pessimistic
+           disconnect handling), mirroring JupyterHub's orm.new_session_factory().
+        3. Call ``Base.metadata.create_all`` as a safety net for any tables that
+           Alembic might have missed (e.g. on a brand-new SQLite file).
+        """
+        from .dbutil import new_session_factory, upgrade
+
+        # --- Feature 3: Alembic migrations ---
+        try:
+            upgrade(self.db_url)
+        except Exception as e:
+            # On a brand-new database the alembic_version table won't exist yet;
+            # create_all below will bootstrap the schema, so we just warn here.
+            logger.warning("Alembic upgrade skipped: %s", e)
+
+        # --- Feature 2: Consistent session factory (JupyterHub pattern) ---
+        self.engine, _session_factory = new_session_factory(self.db_url)
+        # create_all is idempotent; guards against the alembic-skip case above
         orm.Base.metadata.create_all(self.engine)
-        self.Session = scoped_session(sessionmaker(bind=self.engine))
-        self.db = self.Session()
+        # Single session instance shared across all handlers via app reference —
+        # identical to JupyterHub's self.db = self.session_factory()
+        self.db = _session_factory()
 
         # Initialize or load cookie secret
         self._init_cookie_secret()
@@ -126,10 +242,14 @@ class JupyterCluster(Application):
                         admin=user_data.get("admin", False),
                         allowed_namespaces=user_data.get("allowed_namespaces", []),
                         max_hubs=user_data.get("max_hubs"),
+                        can_create_namespaces=user_data.get("can_create_namespaces"),
+                        can_delete_namespaces=user_data.get("can_delete_namespaces"),
                     )
                     self.db.add(user)
                     logger.info(
-                        f"Created default user: {username} (admin={user.admin}, namespaces={user.allowed_namespaces})"
+                        f"Created default user: {username} (admin={user.admin}, "
+                        f"namespaces={user.allowed_namespaces}, "
+                        f"can_create={user.can_create_namespaces}, can_delete={user.can_delete_namespaces})"
                     )
                 else:
                     # Update existing user
@@ -138,6 +258,10 @@ class JupyterCluster(Application):
                         "allowed_namespaces", user.allowed_namespaces
                     )
                     user.max_hubs = user_data.get("max_hubs", user.max_hubs)
+                    if "can_create_namespaces" in user_data:
+                        user.can_create_namespaces = user_data["can_create_namespaces"]
+                    if "can_delete_namespaces" in user_data:
+                        user.can_delete_namespaces = user_data["can_delete_namespaces"]
                     logger.info(f"Updated default user: {username}")
             self.db.commit()
         except json.JSONDecodeError as e:
@@ -227,11 +351,17 @@ class JupyterCluster(Application):
                 if OAuthCallbackHandler
                 else (r"/oauth_callback", web.ErrorHandler, {"status_code": 404})
             ),
-            # API
+            # API — info (unauthenticated)
+            (r"/api/info", InfoAPIHandler),
+            # API — hubs (more-specific routes first to avoid capture by the generic one)
             (r"/api/hubs", HubListAPIHandler),
-            (r"/api/hubs/([^/]+)", HubAPIHandler),
+            (r"/api/hubs/([^/]+)/events", HubEventsAPIHandler),
             (r"/api/hubs/([^/]+)/(start|stop)", HubActionAPIHandler),
+            (r"/api/hubs/([^/]+)", HubAPIHandler),
+            # API — users + tokens (token routes before user route to avoid /tokens being a username)
             (r"/api/users", UserListAPIHandler),
+            (r"/api/users/([^/]+)/tokens", UserTokenListAPIHandler),
+            (r"/api/users/([^/]+)/tokens/([^/]+)", UserTokenAPIHandler),
             (r"/api/users/([^/]+)", UserAPIHandler),
             (r"/api/health", HealthHandler),
             # Error handlers (must be last)
@@ -292,6 +422,13 @@ class JupyterCluster(Application):
         if user and user.max_hubs and len(user_hubs) >= user.max_hubs:
             raise ValueError(f"User {owner} has reached maximum hub limit of {user.max_hubs}")
 
+        # Check namespace creation permission
+        if not self._can_user_create_namespace(owner):
+            raise ValueError(
+                f"User {owner} is not allowed to create namespaces/hubs. "
+                "Contact an administrator to enable this permission."
+            )
+
         # Validate namespace restrictions (if configured) - exact match
         if user and user.allowed_namespaces:
             if namespace not in user.allowed_namespaces:
@@ -341,16 +478,40 @@ class JupyterCluster(Application):
         logger.info(f"Created hub {name} for owner {owner}")
         return hub
 
-    async def delete_hub(self, name: str):
-        """Delete a hub instance"""
+    async def delete_hub(self, name: str, caller: Optional[str] = None):
+        """Delete a hub instance.
+
+        Args:
+            name: Hub name to delete.
+            caller: Username of the user requesting deletion. Used for permission checks;
+                    if None, the check is skipped (e.g., for internal/admin calls).
+        """
         if name not in self.hubs:
             raise ValueError(f"Hub {name} not found")
 
         hub = self.hubs[name]
 
-        # Stop hub if running
+        # Check namespace deletion permission for non-admin callers
+        if caller is not None and not self._can_user_delete_namespace(caller):
+            raise ValueError(
+                f"User {caller} is not allowed to delete namespaces/hubs. "
+                "Contact an administrator to enable this permission."
+            )
+
+        namespace = hub.namespace
+
+        # Stop hub if running (uninstalls Helm release)
         if hub.status == "running":
             await hub.stop()
+
+        # Optionally delete the Kubernetes namespace
+        if self.allow_namespace_deletion:
+            try:
+                spawner = hub.get_spawner()
+                await spawner._delete_namespace(namespace)
+                logger.info(f"Deleted namespace {namespace} for hub {name}")
+            except Exception as e:
+                logger.warning(f"Failed to delete namespace {namespace}: {e}")
 
         # Delete from database
         self.db.delete(hub.orm_hub)
@@ -373,10 +534,150 @@ class JupyterCluster(Application):
             return False
         return all(c.isalnum() or c == "-" for c in name)
 
+    # ------------------------------------------------------------------
+    # Feature 1: Startup reconciliation (mirrors JupyterHub init_spawners)
+    # ------------------------------------------------------------------
+
+    async def reconcile_hubs(self) -> None:
+        """Reconcile DB hub states against actual Kubernetes state on startup.
+
+        Mirrors JupyterHub's ``init_spawners()``:
+        - Queries every hub whose stored status implies it might be running.
+        - Calls ``spawner.poll()`` on each in parallel (asyncio.gather).
+        - Updates the DB to reflect reality before serving any requests.
+
+        This guards against stale "running" records left over from a crashed
+        or forcibly-restarted JupyterCluster instance.
+        """
+        active = [
+            h for h in self.hubs.values() if h.status in ("running", "pending", "stopping")
+        ]
+        if not active:
+            logger.info("Startup reconciliation: no active hubs to check.")
+            return
+
+        logger.info("Startup reconciliation: checking %d hub(s)…", len(active))
+
+        async def _check(hub):
+            try:
+                spawner = hub.get_spawner()
+                result = await spawner.poll()
+                if result is None:
+                    # poll() returns None → still running
+                    if hub.status != "running":
+                        logger.info(
+                            "Reconcile %s: status '%s' → 'running' (actually running)",
+                            hub.name,
+                            hub.status,
+                        )
+                        hub.status = "running"
+                        hub._save_to_orm()
+                else:
+                    # poll() returned an exit code → not running
+                    if hub.status not in ("stopped", "error"):
+                        logger.warning(
+                            "Reconcile %s: status '%s' → 'stopped' (not running, exit=%s)",
+                            hub.name,
+                            hub.status,
+                            result,
+                        )
+                        hub.status = "stopped"
+                        hub._save_to_orm()
+            except Exception:
+                logger.exception("Reconcile: failed to poll hub %s", hub.name)
+
+        # Run all polls concurrently — mirrors JupyterHub's asyncio.gather usage
+        await asyncio.gather(*[_check(h) for h in active], return_exceptions=True)
+
+        try:
+            self.db.commit()
+            logger.info("Startup reconciliation complete.")
+        except Exception:
+            logger.exception("Reconcile: failed to commit status updates")
+            self.db.rollback()
+
+    # ------------------------------------------------------------------
+    # Feature 4: Background health polling (mirrors JupyterHub PeriodicCallback)
+    # ------------------------------------------------------------------
+
+    def start_polling(self) -> None:
+        """Register and start the hub health-polling PeriodicCallback.
+
+        Mirrors JupyterHub's spawner ``start_polling()`` method and the
+        application-level ``_periodic_callbacks`` dict pattern used for
+        token purging, service health checks, and last-activity updates.
+
+        The callback fires every ``poll_interval`` seconds.  Setting
+        ``poll_interval = 0`` disables polling (same as JupyterHub's
+        ``poll_interval <= 0`` guard).
+        """
+        if self.poll_interval <= 0:
+            logger.info("Hub health polling disabled (poll_interval=0).")
+            return
+
+        pc = PeriodicCallback(self.poll_all_hubs, 1e3 * self.poll_interval)
+        self._periodic_callbacks["hub_health"] = pc
+        pc.start()
+        logger.info("Hub health polling started (interval=%ds).", self.poll_interval)
+
+    async def poll_all_hubs(self) -> None:
+        """Poll every running/pending hub and update status in the database.
+
+        Called periodically by the ``hub_health`` PeriodicCallback.  Mirrors
+        JupyterHub's ``poll_and_notify()`` on individual spawners, lifted to
+        the application level because JupyterCluster manages many hubs rather
+        than many single-user servers.
+
+        Any hub that fails its poll is marked 'stopped'; the original error is
+        logged but does not abort other polls (return_exceptions=True).
+        """
+        candidates = [h for h in self.hubs.values() if h.status in ("running", "pending")]
+        if not candidates:
+            return
+
+        changed = False
+
+        async def _poll(hub):
+            nonlocal changed
+            try:
+                spawner = hub.get_spawner()
+                result = await spawner.poll()
+                if result is None:
+                    if hub.status != "running":
+                        hub.status = "running"
+                        hub._save_to_orm()
+                        changed = True
+                else:
+                    if hub.status != "stopped":
+                        logger.warning(
+                            "Hub %s stopped unexpectedly (exit=%s).", hub.name, result
+                        )
+                        hub.status = "stopped"
+                        hub._save_to_orm()
+                        changed = True
+            except Exception:
+                logger.exception("Error polling hub %s", hub.name)
+
+        await asyncio.gather(*[_poll(h) for h in candidates], return_exceptions=True)
+
+        if changed:
+            try:
+                self.db.commit()
+            except Exception:
+                logger.exception("Failed to commit poll status updates")
+                self.db.rollback()
+
     def start(self):
         """Start the JupyterCluster server"""
         logger.info(f"Starting JupyterCluster on {self.ip}:{self.port}")
         self.web_app.listen(self.port, address=self.ip)
+
+        # --- Feature 1: reconcile hub states before accepting traffic ---
+        IOLoop.current().run_sync(self.reconcile_hubs)
+
+        # --- Feature 4: start background health polling ---
+        self.start_polling()
+
         IOLoop.current().start()
 
     def _init_cookie_secret(self):

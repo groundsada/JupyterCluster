@@ -1,0 +1,25 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+# Two nodes: control-plane + one worker.
+# The worker carries JupyterCluster and spawned JupyterHub releases.
+# 4 GiB RAM on the worker is enough for 2-3 minimal JupyterHub deployments
+# running simultaneously during the deployment test suite.
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+  - role: worker
+    # Give the worker node more kubelet resources so JupyterHub pods
+    # do not get evicted under memory pressure.
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            system-reserved: "memory=512Mi"
+            kube-reserved: "memory=512Mi"
+            eviction-hard: "memory.available<256Mi"

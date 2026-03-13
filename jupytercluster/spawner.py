@@ -604,6 +604,28 @@ class HubSpawner(LoggingConfigurable):
             # Clean up temp file
             Path(values_file).unlink(missing_ok=True)
 
+    async def _delete_namespace(self, namespace: str):
+        """Delete a Kubernetes namespace.
+
+        Only called when ``allowNamespaceDeletion`` is enabled in config.
+        The namespace must be managed by JupyterCluster (has the managed label).
+        """
+        try:
+            ns = self.core_v1.read_namespace(name=namespace)
+            labels = ns.metadata.labels or {}
+            if labels.get("jupytercluster.io/managed") != "true":
+                self.log.warning(
+                    f"Namespace {namespace} is not managed by JupyterCluster — skipping deletion"
+                )
+                return
+            self.core_v1.delete_namespace(name=namespace)
+            self.log.info(f"Deleted namespace {namespace}")
+        except ApiException as e:
+            if e.status == 404:
+                self.log.debug(f"Namespace {namespace} already gone")
+            else:
+                raise
+
     async def _ensure_helm_repo(self):
         """Ensure Helm repository is added"""
         repo_name = "jupyterhub"

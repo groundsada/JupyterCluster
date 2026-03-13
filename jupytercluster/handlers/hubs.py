@@ -182,7 +182,7 @@ class HubDetailHandler(BaseHandler):
                 await hub.stop()
                 app.db.commit()  # Commit after stop to save error_message if any
             elif action == "delete":
-                await app.delete_hub(hub_name)
+                await app.delete_hub(hub_name, caller=user)
                 self.redirect("/")
                 return
             elif action:

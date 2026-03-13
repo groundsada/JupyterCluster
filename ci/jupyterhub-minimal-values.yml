@@ -1,0 +1,35 @@
+# Minimal JupyterHub Helm values for E2E deployment tests.
+# Goals: start as fast as possible, use no persistent storage,
+#        avoid pulling large singleuser images.
+hub:
+  db:
+    type: sqlite-memory   # No PVC needed — fastest startup
+  config:
+    JupyterHub:
+      admin_access: true
+
+proxy:
+  service:
+    type: ClusterIP   # No LoadBalancer needed in kind
+
+singleuser:
+  startTimeout: 30
+  storage:
+    type: none   # Skip home-directory PVC provisioning
+  image:
+    name: jupyter/base-notebook
+    tag: latest
+    pullPolicy: IfNotPresent
+
+prePuller:
+  hook:
+    enabled: false   # Skip pre-pull hooks — saves ~2 minutes
+  continuous:
+    enabled: false
+
+scheduling:
+  userScheduler:
+    enabled: false   # Skip user-scheduler — saves resources
+
+cull:
+  enabled: false   # Disable culling — not needed in short-lived tests

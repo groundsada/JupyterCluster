@@ -5,6 +5,7 @@ from typing import Optional
 
 from tornado import web
 
+from ..pagination import pagination_envelope, parse_pagination
 from ..utils import parse_config
 from .base import APIHandler
 
@@ -15,46 +16,45 @@ class HubListAPIHandler(APIHandler):
     """List all hubs"""
 
     async def get(self):
-        """GET /api/hubs - List all hubs"""
+        """GET /api/hubs - List all hubs
+
+        Supports ``?limit=`` and ``?offset=`` for pagination.
+        Optional ``?status=running|stopped|pending|error`` filter.
+        """
         current_user = self.get_current_user()
         is_admin = self.is_admin()
 
-        # Get hubs from application
-        app = self.application.settings.get("jupytercluster")
-        if not app:
-            raise web.HTTPError(500, "JupyterCluster application not found")
-        hubs = []
+        status_filter = self.get_argument("status", None)
+        limit, offset = parse_pagination(self)
 
-        # Filter based on permissions
-        for hub in app.hubs.values():
-            hub_dict = hub.to_dict()
+        # Filter by permission and optional status
+        visible = [
+            hub.to_dict()
+            for hub in self.app.hubs.values()
+            if (is_admin or hub.owner == current_user)
+            and (status_filter is None or hub.status == status_filter)
+        ]
 
-            # Users can only see their own hubs unless admin
-            if not is_admin and hub.owner != current_user:
-                continue
+        total = len(visible)
+        page = visible[offset : offset + limit]
 
-            hubs.append(hub_dict)
-
-        self.write({"hubs": hubs})
+        response = {"hubs": page}
+        response.update(pagination_envelope(total, limit, offset))
+        self.write(response)
 
 
 class HubAPIHandler(APIHandler):
     """Get, create, update, delete a specific hub"""
 
+    def _get_hub_or_404(self, hub_name: str):
+        if hub_name not in self.app.hubs:
+            raise web.HTTPError(404, f"Hub {hub_name!r} not found")
+        return self.app.hubs[hub_name]
+
     async def get(self, hub_name: str):
         """GET /api/hubs/:name - Get hub details"""
-        app = self.application.settings.get("jupytercluster")
-        if not app:
-            raise web.HTTPError(500, "JupyterCluster application not found")
-
-        if hub_name not in app.hubs:
-            raise web.HTTPError(404, f"Hub {hub_name} not found")
-
-        hub = app.hubs[hub_name]
-
-        # Check permission
+        hub = self._get_hub_or_404(hub_name)
         self.require_hub_permission(hub.owner)
-
         self.write(hub.to_dict())
 
     async def post(self, hub_name: str):
@@ -63,44 +63,37 @@ class HubAPIHandler(APIHandler):
         if not current_user:
             raise web.HTTPError(401, "Authentication required")
 
-        app = self.application.settings.get("jupytercluster")
-        if not app:
-            raise web.HTTPError(500, "JupyterCluster application not found")
+        if hub_name in self.app.hubs:
+            raise web.HTTPError(409, f"Hub {hub_name!r} already exists")
 
-        # Check if hub already exists
-        if hub_name in app.hubs:
-            raise web.HTTPError(409, f"Hub {hub_name} already exists")
-
-        # Get configuration from request body
         body = self.get_json_body() or {}
         values_input = body.get("values")
         description = body.get("description", "")
-        namespace = body.get("namespace")  # Optional namespace override
+        namespace = body.get("namespace")
 
-        # Support both dict and string (YAML/JSON) formats
         if isinstance(values_input, str):
             try:
                 values = parse_config(values_input) if values_input else {}
             except ValueError as e:
-                raise web.HTTPError(400, f"Invalid YAML or JSON in values: {str(e)}")
+                raise web.HTTPError(400, f"Invalid YAML or JSON in values: {e}")
         else:
             values = values_input if values_input is not None else {}
 
-        # Create hub
         try:
-            hub = await app.create_hub(
+            hub = await self.app.create_hub(
                 name=hub_name,
                 owner=current_user,
                 values=values,
                 description=description,
                 namespace=namespace,
             )
-
             self.set_status(201)
             self.write(hub.to_dict())
+        except ValueError as e:
+            raise web.HTTPError(403, str(e))
         except Exception as e:
-            logger.error(f"Failed to create hub {hub_name}: {e}")
-            raise web.HTTPError(500, f"Failed to create hub: {str(e)}")
+            logger.error("Failed to create hub %s: %s", hub_name, e)
+            raise web.HTTPError(500, f"Failed to create hub: {e}")
 
     async def put(self, hub_name: str):
         """PUT /api/hubs/:name - Update a hub"""
@@ -108,92 +101,59 @@ class HubAPIHandler(APIHandler):
         if not current_user:
             raise web.HTTPError(401, "Authentication required")
 
-        app = self.application.settings.get("jupytercluster")
-        if not app:
-            raise web.HTTPError(500, "JupyterCluster application not found")
-
-        if hub_name not in app.hubs:
-            raise web.HTTPError(404, f"Hub {hub_name} not found")
-
-        hub = app.hubs[hub_name]
-
-        # Check permission
+        hub = self._get_hub_or_404(hub_name)
         self.require_hub_permission(hub.owner)
 
-        # Get update data from request body
         body = self.get_json_body() or {}
         values_input = body.get("values")
         description = body.get("description")
 
-        # Support both dict and string (YAML/JSON) formats
         values = None
         if values_input is not None:
             if isinstance(values_input, str):
                 try:
                     values = parse_config(values_input) if values_input else {}
                 except ValueError as e:
-                    raise web.HTTPError(400, f"Invalid YAML or JSON in values: {str(e)}")
+                    raise web.HTTPError(400, f"Invalid YAML or JSON in values: {e}")
             else:
                 values = values_input
 
         try:
-            # Update hub values if provided
             if values is not None:
-                # Validate values through spawner
                 spawner = hub.get_spawner()
-                sanitized_values = spawner._validate_helm_values(values)
-                hub.values = sanitized_values
-
-            # Update description if provided
+                hub.values = spawner._validate_helm_values(values)
             if description is not None:
                 hub.description = description
-
-            # Save to database
             hub._save_to_orm()
-            app.db.commit()
-
+            self.app.db.commit()
             self.write(hub.to_dict())
         except Exception as e:
-            logger.error(f"Failed to update hub {hub_name}: {e}")
-            raise web.HTTPError(500, f"Failed to update hub: {str(e)}")
+            logger.error("Failed to update hub %s: %s", hub_name, e)
+            raise web.HTTPError(500, f"Failed to update hub: {e}")
 
     async def delete(self, hub_name: str):
         """DELETE /api/hubs/:name - Delete a hub"""
-        app = self.application.settings.get("jupytercluster")
-        if not app:
-            raise web.HTTPError(500, "JupyterCluster application not found")
-
-        if hub_name not in app.hubs:
-            raise web.HTTPError(404, f"Hub {hub_name} not found")
-
-        hub = app.hubs[hub_name]
-
-        # Check permission
+        hub = self._get_hub_or_404(hub_name)
         self.require_hub_permission(hub.owner)
-
         try:
-            await app.delete_hub(hub_name)
+            await self.app.delete_hub(hub_name, caller=self.get_current_user())
             self.set_status(204)
+        except ValueError as e:
+            raise web.HTTPError(403, str(e))
         except Exception as e:
-            logger.error(f"Failed to delete hub {hub_name}: {e}")
-            raise web.HTTPError(500, f"Failed to delete hub: {str(e)}")
+            logger.error("Failed to delete hub %s: %s", hub_name, e)
+            raise web.HTTPError(500, f"Failed to delete hub: {e}")
 
 
 class HubActionAPIHandler(APIHandler):
-    """Actions on hubs (start, stop, etc.)"""
+    """Actions on hubs (start, stop)"""
 
     async def post(self, hub_name: str, action: str):
         """POST /api/hubs/:name/:action - Perform action on hub"""
-        app = self.application.settings.get("jupytercluster")
-        if not app:
-            raise web.HTTPError(500, "JupyterCluster application not found")
+        if hub_name not in self.app.hubs:
+            raise web.HTTPError(404, f"Hub {hub_name!r} not found")
 
-        if hub_name not in app.hubs:
-            raise web.HTTPError(404, f"Hub {hub_name} not found")
-
-        hub = app.hubs[hub_name]
-
-        # Check permission
+        hub = self.app.hubs[hub_name]
         self.require_hub_permission(hub.owner)
 
         try:
@@ -204,7 +164,9 @@ class HubActionAPIHandler(APIHandler):
                 await hub.stop()
                 self.write({"status": "stopped", "hub": hub.to_dict()})
             else:
-                raise web.HTTPError(400, f"Unknown action: {action}")
+                raise web.HTTPError(400, f"Unknown action: {action!r}")
+        except web.HTTPError:
+            raise
         except Exception as e:
-            logger.error(f"Failed to {action} hub {hub_name}: {e}")
-            raise web.HTTPError(500, f"Failed to {action} hub: {str(e)}")
+            logger.error("Failed to %s hub %s: %s", action, hub_name, e)
+            raise web.HTTPError(500, f"Failed to {action} hub: {e}")

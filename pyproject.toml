@@ -28,6 +28,7 @@ classifiers = [
 dependencies = [
     "tornado>=6.0",
     "sqlalchemy>=1.4",
+    "alembic>=1.10",
     "traitlets>=5.0",
     "kubernetes>=24.0",
     "pyyaml>=6.0",
@@ -52,7 +53,13 @@ Repository = "https://github.com/jupytercluster/jupytercluster"
 Issues = "https://github.com/jupytercluster/jupytercluster/issues"
 
 [tool.setuptools]
-packages = ["jupytercluster"]
+packages = [
+    "jupytercluster",
+    "jupytercluster.api",
+    "jupytercluster.handlers",
+    "jupytercluster.alembic",
+    "jupytercluster.alembic.versions",
+]
 
 [tool.black]
 line-length = 100

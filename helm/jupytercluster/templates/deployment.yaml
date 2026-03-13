@@ -48,6 +48,14 @@ spec:
               value: {{ .Values.config.defaultHelmChart | quote }}
             - name: JUPYTERCLUSTER_ALLOW_NAMESPACE_CREATION
               value: {{ .Values.config.allowNamespaceCreation | default true | quote }}
+            - name: JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT
+              value: {{ .Values.config.allowUserNamespaceManagement | default true | quote }}
+            - name: JUPYTERCLUSTER_ALLOW_NAMESPACE_DELETION
+              value: {{ .Values.config.allowNamespaceDeletion | default false | quote }}
+            {{- if .Values.config.corsAllowOrigins }}
+            - name: JUPYTERCLUSTER_CORS_ALLOW_ORIGINS
+              value: {{ .Values.config.corsAllowOrigins | join "," | quote }}
+            {{- end }}
             {{- if .Values.config.authenticator }}
             - name: JUPYTERCLUSTER_AUTHENTICATOR_CLASS
               value: {{ .Values.config.authenticator.class | quote }}
