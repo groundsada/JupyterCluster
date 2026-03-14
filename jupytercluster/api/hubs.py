@@ -22,6 +22,8 @@ class HubListAPIHandler(APIHandler):
         Optional ``?status=running|stopped|pending|error`` filter.
         """
         current_user = self.get_current_user()
+        if not current_user:
+            raise web.HTTPError(401, "Authentication required")
         is_admin = self.is_admin()
 
         status_filter = self.get_argument("status", None)

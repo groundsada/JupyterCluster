@@ -148,6 +148,8 @@ class JupyterCluster(Application):
         env = os.environ
         if "JUPYTERCLUSTER_DB_URL" in env:
             self.db_url = env["JUPYTERCLUSTER_DB_URL"]
+        if "JUPYTERCLUSTER_DEFAULT_NAMESPACE_PREFIX" in env:
+            self.default_namespace_prefix = env["JUPYTERCLUSTER_DEFAULT_NAMESPACE_PREFIX"]
         if "JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT" in env:
             self.allow_user_namespace_management = _parse_bool(
                 env["JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT"]

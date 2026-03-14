@@ -203,10 +203,21 @@ class APIHandler(web.RequestHandler):
     # ------------------------------------------------------------------
 
     def get_json_body(self) -> Optional[dict]:
-        """Decode and return the JSON request body, or None on failure."""
+        """Decode and return the JSON request body, or None on failure.
+
+        Raises HTTP 400 when the client sends Content-Type: application/json
+        with a non-empty, unparseable body.  Empty bodies return None (treated
+        as an absent body by callers).
+        """
+        body = self.request.body
+        if not body:
+            return None
+        content_type = self.request.headers.get("Content-Type", "")
         try:
-            return json.loads(self.request.body.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+            return json.loads(body.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            if "application/json" in content_type:
+                raise web.HTTPError(400, f"Invalid JSON body: {exc}") from exc
             return None
 
     def write_error(self, status_code: int, **kwargs):
