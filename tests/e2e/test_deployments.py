@@ -11,6 +11,7 @@ full cluster.
 """
 
 import os
+import time
 
 import pytest
 
@@ -22,6 +23,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 HUB_PREFIX = "e2e-deploy"
+
+# Values that make a JupyterHub deploy succeed on a small kind cluster.
+# prePuller disabled so helm install doesn't hang waiting for image pulls.
+MINIMAL_VALUES = {
+    "hub": {"db": {"type": "sqlite-memory"}},
+    "proxy": {"service": {"type": "ClusterIP"}},
+    "prePuller": {"hook": {"enabled": False}, "continuous": {"enabled": False}},
+    "scheduling": {"userScheduler": {"enabled": False}},
+}
 
 
 @pytest.fixture(autouse=True)
@@ -42,6 +52,42 @@ class TestMinimalDeployment:
     """Deploy a single JupyterHub with the minimal values file and verify
     that JupyterCluster transitions the hub through pending → running."""
 
+    def test_deploy_creates_hub_record(
+        self, admin_session, cleanup_hubs, namespace_exists
+    ):
+        """Smoke: hub is created in DB and namespace appears in k8s within 60 s.
+
+        Does NOT wait for running — that is tested in the full suite only.
+        Disabling prePuller ensures helm install can complete on CI hardware.
+        """
+        name = f"{HUB_PREFIX}-smoke"
+        r = admin_session.post(
+            f"{BASE_URL}/api/hubs/{name}",
+            json={
+                "description": "smoke deployment test",
+                "values": MINIMAL_VALUES,
+            },
+        )
+        assert r.status_code == 201, r.text
+        cleanup_hubs.append(name)
+
+        body = r.json()
+        assert body["name"] == name
+        assert body["status"] == "pending"
+        expected_ns = f"jhub-{name}"
+        assert body["namespace"] == expected_ns
+
+        # Namespace is created by helm quickly, before containers start.
+        # Allow up to 60 s (much less than hub-ready timeout).
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if namespace_exists(expected_ns):
+                break
+            time.sleep(5)
+        assert namespace_exists(expected_ns), (
+            f"Namespace {expected_ns!r} not found in k8s within 60 s"
+        )
+
     def test_deploy_minimal_hub(
         self, admin_session, cleanup_hubs, wait_for_hub, namespace_exists
     ):
@@ -51,12 +97,7 @@ class TestMinimalDeployment:
             f"{BASE_URL}/api/hubs/{name}",
             json={
                 "description": "e2e minimal deployment",
-                "helm_values": {
-                    "hub": {"db": {"type": "sqlite-memory"}},
-                    "proxy": {"service": {"type": "ClusterIP"}},
-                    "prePuller": {"hook": {"enabled": False}, "continuous": {"enabled": False}},
-                    "scheduling": {"userScheduler": {"enabled": False}},
-                },
+                "values": MINIMAL_VALUES,
             },
         )
         assert r.status_code == 201, r.text
@@ -80,14 +121,7 @@ class TestMinimalDeployment:
         name = f"{HUB_PREFIX}-list-check"
         admin_session.post(
             f"{BASE_URL}/api/hubs/{name}",
-            json={
-                "helm_values": {
-                    "hub": {"db": {"type": "sqlite-memory"}},
-                    "proxy": {"service": {"type": "ClusterIP"}},
-                    "prePuller": {"hook": {"enabled": False}, "continuous": {"enabled": False}},
-                    "scheduling": {"userScheduler": {"enabled": False}},
-                },
-            },
+            json={"values": MINIMAL_VALUES},
         )
         cleanup_hubs.append(name)
 
@@ -109,14 +143,7 @@ class TestMinimalDeployment:
         name = f"{HUB_PREFIX}-del-helm"
         admin_session.post(
             f"{BASE_URL}/api/hubs/{name}",
-            json={
-                "helm_values": {
-                    "hub": {"db": {"type": "sqlite-memory"}},
-                    "proxy": {"service": {"type": "ClusterIP"}},
-                    "prePuller": {"hook": {"enabled": False}, "continuous": {"enabled": False}},
-                    "scheduling": {"userScheduler": {"enabled": False}},
-                },
-            },
+            json={"values": MINIMAL_VALUES},
         )
         cleanup_hubs.append(name)
 
@@ -170,7 +197,7 @@ class TestNamespacePrefix:
 
 
 class TestCustomHelmValues:
-    """Deploy a hub with extra helm_values and verify the API round-trip."""
+    """Deploy a hub with extra values and verify the API round-trip."""
 
     def test_custom_values_persisted(self, admin_session, cleanup_hubs):
         name = f"{HUB_PREFIX}-custom-vals"
@@ -181,30 +208,23 @@ class TestCustomHelmValues:
         }
         r = admin_session.post(
             f"{BASE_URL}/api/hubs/{name}",
-            json={"description": "custom values test", "helm_values": extra},
+            json={"description": "custom values test", "values": extra},
         )
         assert r.status_code == 201
         cleanup_hubs.append(name)
 
-        # GET should echo back the hub with the stored values
+        # GET should echo back the hub with the stored description
         body = admin_session.get(f"{BASE_URL}/api/hubs/{name}").json()
         assert body["description"] == "custom values test"
 
     def test_update_values_and_redeploy(
         self, admin_session, cleanup_hubs, wait_for_hub
     ):
-        """PUT should allow updating helm_values; hub status transitions back to pending."""
+        """PUT should allow updating values; hub status transitions back to pending."""
         name = f"{HUB_PREFIX}-update-vals"
         admin_session.post(
             f"{BASE_URL}/api/hubs/{name}",
-            json={
-                "helm_values": {
-                    "hub": {"db": {"type": "sqlite-memory"}},
-                    "proxy": {"service": {"type": "ClusterIP"}},
-                    "prePuller": {"hook": {"enabled": False}, "continuous": {"enabled": False}},
-                    "scheduling": {"userScheduler": {"enabled": False}},
-                },
-            },
+            json={"values": MINIMAL_VALUES},
         )
         cleanup_hubs.append(name)
         wait_for_hub(admin_session, BASE_URL, name, "running")
@@ -229,17 +249,12 @@ class TestMultiHubDeployment:
         self, admin_session, cleanup_hubs, wait_for_hub
     ):
         names = [f"{HUB_PREFIX}-multi-a", f"{HUB_PREFIX}-multi-b"]
-        minimal = {
-            "helm_values": {
-                "hub": {"db": {"type": "sqlite-memory"}},
-                "proxy": {"service": {"type": "ClusterIP"}},
-                "prePuller": {"hook": {"enabled": False}, "continuous": {"enabled": False}},
-                "scheduling": {"userScheduler": {"enabled": False}},
-            }
-        }
 
         for name in names:
-            r = admin_session.post(f"{BASE_URL}/api/hubs/{name}", json=minimal)
+            r = admin_session.post(
+                f"{BASE_URL}/api/hubs/{name}",
+                json={"values": MINIMAL_VALUES},
+            )
             assert r.status_code == 201
             cleanup_hubs.append(name)
 

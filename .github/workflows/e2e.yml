@@ -519,21 +519,23 @@ jobs:
           done
           curl -sf http://localhost:${{ env.JC_PORT }}/api/health | jq .
 
-      # ── Smoke: single hub deploy (runs on every branch) ──────────────────
+      # ── Smoke: fast tests — verify API + namespace creation, no wait for running ──
+      # test_deploy_creates_hub_record: hub record created, namespace exists within 60 s
+      # test_default_prefix_applied / test_explicit_namespace_overrides_prefix: check namespace field
+      # test_custom_values_persisted: check description round-trip
       - name: Run smoke deployment tests
         env:
           JUPYTERCLUSTER_URL: "http://localhost:${{ env.JC_PORT }}"
           JUPYTERCLUSTER_TOKEN: ${{ steps.bootstrap.outputs.token }}
           DEPLOY_TESTS: "1"
-          HUB_READY_TIMEOUT: "480"
         run: |
           mkdir -p test-results
           pytest tests/e2e/test_deployments.py \
             -v --tb=short \
-            -k "test_deploy_minimal_hub or test_default_prefix_applied or test_custom_values_persisted" \
+            -k "test_deploy_creates_hub_record or test_default_prefix_applied or test_explicit_namespace_overrides_prefix or test_custom_values_persisted" \
             --junit-xml=test-results/e2e-deploy-smoke.xml
 
-      # ── Full deployment suite: multi-hub, update, delete (push only) ─────
+      # ── Full deployment suite: waits for running, multi-hub, update, delete ──
       - name: Run full deployment tests
         if: github.event_name == 'push'
         env:
@@ -544,7 +546,7 @@ jobs:
         run: |
           pytest tests/e2e/test_deployments.py \
             -v --tb=short \
-            -k "not (test_deploy_minimal_hub or test_default_prefix_applied or test_custom_values_persisted)" \
+            -k "not (test_deploy_creates_hub_record or test_default_prefix_applied or test_explicit_namespace_overrides_prefix or test_custom_values_persisted)" \
             --junit-xml=test-results/e2e-deploy-full.xml
 
       # ── Diagnostics ──────────────────────────────────────────────────────
