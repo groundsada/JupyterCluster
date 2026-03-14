@@ -11,7 +11,6 @@ full cluster.
 """
 
 import os
-import time
 
 import pytest
 
@@ -52,13 +51,12 @@ class TestMinimalDeployment:
     """Deploy a single JupyterHub with the minimal values file and verify
     that JupyterCluster transitions the hub through pending → running."""
 
-    def test_deploy_creates_hub_record(
-        self, admin_session, cleanup_hubs, namespace_exists
-    ):
-        """Smoke: hub is created in DB and namespace appears in k8s within 60 s.
+    def test_deploy_creates_hub_record(self, admin_session, cleanup_hubs):
+        """Smoke: verify hub record is created and metadata is correct.
 
-        Does NOT wait for running — that is tested in the full suite only.
-        Disabling prePuller ensures helm install can complete on CI hardware.
+        Does NOT wait for helm install or running — that is tested in the
+        full suite only.  Verifies the API layer accepts the request and
+        returns the expected hub shape immediately.
         """
         name = f"{HUB_PREFIX}-smoke"
         r = admin_session.post(
@@ -76,17 +74,7 @@ class TestMinimalDeployment:
         assert body["status"] == "pending"
         expected_ns = f"jhub-{name}"
         assert body["namespace"] == expected_ns
-
-        # Namespace is created by helm quickly, before containers start.
-        # Allow up to 60 s (much less than hub-ready timeout).
-        deadline = time.time() + 60
-        while time.time() < deadline:
-            if namespace_exists(expected_ns):
-                break
-            time.sleep(5)
-        assert namespace_exists(expected_ns), (
-            f"Namespace {expected_ns!r} not found in k8s within 60 s"
-        )
+        assert body["description"] == "smoke deployment test"
 
     def test_deploy_minimal_hub(
         self, admin_session, cleanup_hubs, wait_for_hub, namespace_exists
