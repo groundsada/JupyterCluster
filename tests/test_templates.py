@@ -81,6 +81,7 @@ class TestTemplates:
                 username=None,
                 static_url=static_url,
                 announcement=None,
+                xsrf="test-xsrf-token",
             )
             # If we get here, rendering succeeded
             assert html is not None
@@ -177,6 +178,9 @@ class TestTemplates:
                 error=None,
                 static_url=static_url,
                 announcement=None,
+                xsrf="test-xsrf-token",
+                existing_values_yaml="",
+                hub_values_schema_json="{}",
             )
             assert html is not None
         except ParseError as e:
@@ -222,6 +226,9 @@ class TestTemplates:
                 error=None,
                 static_url=static_url,
                 announcement=None,
+                xsrf="test-xsrf-token",
+                existing_values_yaml="",
+                hub_values_schema_json="{}",
             )
             assert html is not None
         except ParseError as e:

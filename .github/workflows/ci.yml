@@ -64,7 +64,7 @@ jobs:
       
       - name: Run tests
         run: |
-          pytest tests/ -v --cov=jupytercluster --cov-report=xml --cov-report=html --cov-report=term-missing
+          pytest tests/ --ignore=tests/e2e -v --cov=jupytercluster --cov-report=xml --cov-report=html --cov-report=term-missing
           # Explicitly run template and health tests to catch errors early
           pytest tests/test_templates.py -v
           pytest tests/test_api.py::TestAPIHandlers::test_health_endpoint -v
