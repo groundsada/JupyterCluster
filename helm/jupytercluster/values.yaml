@@ -77,7 +77,7 @@ persistence:
   size: 1Gi
 
 config:
-  dbUrl: "sqlite:///data/jupytercluster.db"
+  dbUrl: "sqlite:////data/jupytercluster.db"
   port: 8080
   # Optional prefix prepended to auto-generated namespace names.
   # When a hub is created without an explicit namespace, the namespace is derived as
