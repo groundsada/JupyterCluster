@@ -181,6 +181,7 @@ class TestTemplates:
                 xsrf="test-xsrf-token",
                 existing_values_yaml="",
                 hub_values_schema_json="{}",
+                allowed_namespaces=[],
             )
             assert html is not None
         except ParseError as e:
