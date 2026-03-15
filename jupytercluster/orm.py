@@ -115,12 +115,12 @@ class APIToken(Base):
     prefix = Column(String(16), nullable=False, index=True)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    name = Column(String(255))          # Human-readable label, e.g. "ci-pipeline"
-    scopes = Column(JSON, default=list) # [] → inherit full user permissions
-    note = Column(Text)                 # Free-text description
+    name = Column(String(255))  # Human-readable label, e.g. "ci-pipeline"
+    scopes = Column(JSON, default=list)  # [] → inherit full user permissions
+    note = Column(Text)  # Free-text description
 
     created = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=True)   # None → never expires
+    expires_at = Column(DateTime, nullable=True)  # None → never expires
     last_activity = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="tokens")
@@ -151,7 +151,7 @@ class APIToken(Base):
             db.commit()
             # Send `raw` to the caller — it cannot be recovered later.
         """
-        raw = secrets.token_hex(32)   # 64 hex chars, 256 bits
+        raw = secrets.token_hex(32)  # 64 hex chars, 256 bits
         hashed = hashlib.sha256(raw.encode()).hexdigest()
         token = cls(
             hashed_token=hashed,

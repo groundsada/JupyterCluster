@@ -52,7 +52,11 @@ class APIHandler(web.RequestHandler):
         origin = self.request.headers.get("Origin", "")
         if not origin:
             return
-        allowed = getattr(self.app, "cors_allow_origins", []) if self.application.settings.get("jupytercluster") else []
+        allowed = (
+            getattr(self.app, "cors_allow_origins", [])
+            if self.application.settings.get("jupytercluster")
+            else []
+        )
         if not allowed:
             return
         if "*" in allowed or origin in allowed:
@@ -232,6 +236,4 @@ class APIHandler(web.RequestHandler):
             message = str(kwargs["exc_info"][1])
         else:
             message = self._reason
-        self.write(
-            json.dumps({"error": {"status_code": status_code, "message": message}})
-        )
+        self.write(json.dumps({"error": {"status_code": status_code, "message": message}}))

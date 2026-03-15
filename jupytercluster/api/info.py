@@ -49,7 +49,9 @@ class InfoAPIHandler(APIHandler):
             "hub_events": True,
             "namespace_creation": getattr(app, "allow_namespace_creation", True) if app else True,
             "namespace_deletion": getattr(app, "allow_namespace_deletion", False) if app else False,
-            "user_namespace_management": getattr(app, "allow_user_namespace_management", True) if app else True,
+            "user_namespace_management": (
+                getattr(app, "allow_user_namespace_management", True) if app else True
+            ),
         }
 
         self.write(

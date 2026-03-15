@@ -182,6 +182,8 @@ class TestTemplates:
                 existing_values_yaml="",
                 hub_values_schema_json="{}",
                 allowed_namespaces=[],
+                max_hubs=None,
+                current_hub_count=0,
             )
             assert html is not None
         except ParseError as e:

@@ -127,11 +127,7 @@ class UserTokenAPIHandler(APIHandler):
             tid = int(token_id)
         except ValueError:
             raise web.HTTPError(404, f"Token {token_id!r} not found")
-        token = (
-            self.app.db.query(orm.APIToken)
-            .filter_by(id=tid, user_id=user.id)
-            .first()
-        )
+        token = self.app.db.query(orm.APIToken).filter_by(id=tid, user_id=user.id).first()
         if token is None:
             raise web.HTTPError(404, f"Token {token_id!r} not found")
         return token

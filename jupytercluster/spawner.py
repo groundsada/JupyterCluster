@@ -655,9 +655,7 @@ class HubSpawner(LoggingConfigurable):
                     await rollback.communicate()
                     if rollback.returncode != 0:
                         # No prior revision to roll back to — uninstall instead
-                        self.log.warning(
-                            f"Rollback failed, uninstalling {self.helm_release_name}…"
-                        )
+                        self.log.warning(f"Rollback failed, uninstalling {self.helm_release_name}…")
                         uninstall = await asyncio.create_subprocess_exec(
                             "helm",
                             "uninstall",
@@ -679,9 +677,7 @@ class HubSpawner(LoggingConfigurable):
                     r_stdout, r_stderr = await retry.communicate()
                     if retry.returncode != 0:
                         error_msg = r_stderr.decode() if r_stderr else r_stdout.decode()
-                        raise RuntimeError(
-                            f"Helm deployment failed after recovery: {error_msg}"
-                        )
+                        raise RuntimeError(f"Helm deployment failed after recovery: {error_msg}")
                     self.log.info(
                         f"Helm release {self.helm_release_name} deployed successfully after recovery"
                     )

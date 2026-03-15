@@ -138,7 +138,9 @@ class HubDetailHandler(BaseHandler):
 
         # Convert dict to object for template compatibility (Tornado templates use attribute access)
         hub_obj = DictObject(hub_dict)
-        self.render_template("hub_detail.html", hub=hub_obj, existing_values_yaml=hub_dict["values_yaml"])
+        self.render_template(
+            "hub_detail.html", hub=hub_obj, existing_values_yaml=hub_dict["values_yaml"]
+        )
 
     async def post(self, hub_name: str):
         """Handle hub actions (start, stop, delete)"""

@@ -108,11 +108,7 @@ class BaseHandler(web.RequestHandler):
         if name in ("hub_create.html", "hub_detail.html"):
             import json as _json
 
-            schema = (
-                self.jupytercluster.get_hub_values_schema()
-                if self.jupytercluster
-                else {}
-            )
+            schema = self.jupytercluster.get_hub_values_schema() if self.jupytercluster else {}
             kwargs.setdefault("hub_values_schema_json", _json.dumps(schema))
 
         # XSRF token for forms

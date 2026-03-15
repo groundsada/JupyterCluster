@@ -8,8 +8,11 @@ from typing import Dict, Optional
 
 from tornado import web
 from tornado.ioloop import IOLoop, PeriodicCallback
-from traitlets import Bool, Dict as TraitDict
-from traitlets import Integer, List as TraitList, Unicode, default
+from traitlets import Bool
+from traitlets import Dict as TraitDict
+from traitlets import Integer
+from traitlets import List as TraitList
+from traitlets import Unicode, default
 from traitlets.config import Application
 
 from . import orm
@@ -273,6 +276,7 @@ class JupyterCluster(Application):
 
     def _apply_env_overrides(self):
         """Apply environment variable overrides for settings not covered by traitlets config loading"""
+
         def _parse_bool(val: str) -> bool:
             return val.lower() in ("true", "1", "yes")
 
@@ -731,9 +735,7 @@ class JupyterCluster(Application):
         This guards against stale "running" records left over from a crashed
         or forcibly-restarted JupyterCluster instance.
         """
-        active = [
-            h for h in self.hubs.values() if h.status in ("running", "pending", "stopping")
-        ]
+        active = [h for h in self.hubs.values() if h.status in ("running", "pending", "stopping")]
         if not active:
             logger.info("Startup reconciliation: no active hubs to check.")
             return
@@ -831,9 +833,7 @@ class JupyterCluster(Application):
                         changed = True
                 else:
                     if hub.status != "stopped":
-                        logger.warning(
-                            "Hub %s stopped unexpectedly (exit=%s).", hub.name, result
-                        )
+                        logger.warning("Hub %s stopped unexpectedly (exit=%s).", hub.name, result)
                         hub.status = "stopped"
                         hub._save_to_orm()
                         changed = True
