@@ -13,7 +13,7 @@
       <i class="fa fa-sliders"></i> Simple Editor
     </button>
   </li>
-  <li class="nav-item" role="presentation">
+  <li class="nav-item" role="presentation" id="advanced-tab-li">
     <button class="nav-link" id="advanced-tab" data-bs-toggle="tab"
             data-bs-target="#advanced-editor-pane" type="button" role="tab">
       <i class="fa fa-code"></i> Advanced (YAML)
@@ -25,7 +25,7 @@
   <!-- Simple Editor: rendered dynamically from schema -->
   <div class="tab-pane fade show active" id="simple-editor-pane" role="tabpanel"></div>
 
-  <!-- Advanced: raw YAML -->
+  <!-- Advanced: raw YAML (hidden when schema sets allowAdvancedYaml: false) -->
   <div class="tab-pane fade" id="advanced-editor-pane" role="tabpanel">
     <textarea class="form-control font-monospace" id="values-yaml-editor" rows="15"
               placeholder="hub: ..."></textarea>
@@ -196,25 +196,42 @@
     }
   });
 
-  // ── Form submit ───────────────────────────────────────────────────────────
+  // ── Initialise ────────────────────────────────────────────────────────────
 
-  // Attach to the closest enclosing form
-  const editorForm = document.getElementById('helm-editor-tabs').closest('form');
-  if (editorForm) {
-    editorForm.addEventListener('submit', function () {
-      const activeTab = document.querySelector('#helm-editor-tabs .nav-link.active');
-      let yaml;
-      if (activeTab && activeTab.id === 'advanced-tab') {
-        yaml = document.getElementById('values-yaml-editor').value;
-      } else {
-        const values = buildValuesFromForm();
-        yaml = Object.keys(values).length ? jsyaml.dump(values, { indent: 2 }) : '';
-      }
-      document.getElementById('values').value = yaml;
-    });
+  // ── Apply schema-level settings ───────────────────────────────────────────
+
+  // Hide Advanced YAML tab when schema disables it
+  if (schema.allowAdvancedYaml === false) {
+    document.getElementById('advanced-tab-li').style.display = 'none';
   }
 
-  // ── Initialise ────────────────────────────────────────────────────────────
+  // Apply fixed values on top of any built values object before submit
+  function applyFixedValues(values) {
+    if (!schema.fixed) return values;
+    Object.entries(schema.fixed).forEach(([path, value]) => {
+      setNestedValue(values, path, value);
+    });
+    return values;
+  }
+
+  // ── Patch submit to apply fixed values ────────────────────────────────────
+  // (overrides the earlier submit listener — re-register after renderSchema)
+  const editorForm2 = document.getElementById('helm-editor-tabs').closest('form');
+  if (editorForm2) {
+    editorForm2.addEventListener('submit', function () {
+      const activeTab = document.querySelector('#helm-editor-tabs .nav-link.active');
+      let values;
+      if (activeTab && activeTab.id === 'advanced-tab') {
+        try { values = jsyaml.load(document.getElementById('values-yaml-editor').value) || {}; }
+        catch (e) { values = {}; }
+      } else {
+        values = buildValuesFromForm();
+      }
+      values = applyFixedValues(values);
+      document.getElementById('values').value =
+        Object.keys(values).length ? jsyaml.dump(values, { indent: 2 }) : '';
+    });
+  }
 
   renderSchema();
 

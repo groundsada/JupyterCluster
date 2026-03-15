@@ -316,6 +316,29 @@ class JupyterCluster(Application):
         """Return the effective hub values schema (custom or built-in default)."""
         return self.hub_values_schema if self.hub_values_schema else DEFAULT_HUB_VALUES_SCHEMA
 
+    def apply_schema_fixed_values(self, values: dict) -> dict:
+        """Apply schema-defined fixed values on top of user-supplied values.
+
+        Fixed values (schema.fixed) are always enforced regardless of what the
+        user submits — both through the GUI and the API.
+        """
+        schema = self.get_hub_values_schema()
+        fixed = schema.get("fixed", {})
+        if not fixed:
+            return values
+
+        def set_nested(obj, path, value):
+            parts = path.split(".")
+            for part in parts[:-1]:
+                obj = obj.setdefault(part, {})
+            obj[parts[-1]] = value
+
+        result = dict(values)  # shallow copy; deep paths are set via set_nested
+        for path, value in fixed.items():
+            set_nested(result, path, value)
+        logger.debug("Applied %d fixed schema value(s)", len(fixed))
+        return result
+
     def _can_user_create_namespace(self, username: str) -> bool:
         """Check whether a user is permitted to create namespaces (and thus hubs).
 
@@ -606,7 +629,9 @@ class JupyterCluster(Application):
             owner=owner,
             helm_chart=self.default_helm_chart,
         )
-        sanitized_values = temp_spawner._validate_helm_values(values or {})
+        # Apply fixed schema values on top (enforced regardless of user input)
+        user_values = self.apply_schema_fixed_values(values or {})
+        sanitized_values = temp_spawner._validate_helm_values(user_values)
 
         # Create ORM object
         orm_hub = orm.Hub(

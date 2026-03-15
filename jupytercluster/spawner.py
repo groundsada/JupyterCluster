@@ -362,6 +362,20 @@ class HubSpawner(LoggingConfigurable):
             sanitized_values = self._validate_helm_values(values)
             merged_values.update(sanitized_values)
 
+        # Apply schema-defined fixed values last so they always win (server-side enforcement)
+        _schema_raw = _os.environ.get("JUPYTERCLUSTER_HUB_VALUES_SCHEMA")
+        if _schema_raw:
+            try:
+                _schema = json.loads(_schema_raw)
+                for _path, _val in (_schema.get("fixed") or {}).items():
+                    _parts = _path.split(".")
+                    _cur = merged_values
+                    for _p in _parts[:-1]:
+                        _cur = _cur.setdefault(_p, {})
+                    _cur[_parts[-1]] = _val
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
         # Ensure required schema fields are present (JupyterHub Helm chart requires these)
         # These must be present even if empty to satisfy schema validation
         required_fields = {"hub": {}, "proxy": {}, "singleuser": {}, "ingress": {}}

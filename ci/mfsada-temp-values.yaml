@@ -87,3 +87,71 @@ config:
         - mfsada-jc
         - mfsada-test-armada
         - mfsada-test-armada2
+
+  # Custom GUI schema for this deployment.
+  # - allowAdvancedYaml: false  hides the raw YAML tab entirely
+  # - fixed: values always applied on top; users cannot override them (enforced client + server)
+  # - groups: only these fields are shown in the Simple Editor
+  hubValuesSchema:
+    allowAdvancedYaml: false
+    fixed:
+      hub.db.type: sqlite-pvc
+      hub.db.pvc.storageClassName: rook-ceph-block
+      hub.db.pvc.storage: 1Gi
+      cull.enabled: true
+      cull.timeout: 3600
+      cull.maxAge: 0
+      cull.users: false
+    groups:
+      - title: Single-User Image
+        fields:
+          - label: Image Name
+            path: singleuser.image.name
+            type: text
+            placeholder: quay.io/jupyter/scipy-notebook
+          - label: Image Tag
+            path: singleuser.image.tag
+            type: text
+            placeholder: "latest"
+      - title: Single-User Resources
+        fields:
+          - label: CPU Limit
+            path: singleuser.cpu.limit
+            type: number
+            step: 0.1
+            placeholder: "2"
+          - label: CPU Guarantee
+            path: singleuser.cpu.guarantee
+            type: number
+            step: 0.1
+            placeholder: "0.5"
+          - label: Memory Limit
+            path: singleuser.memory.limit
+            type: text
+            placeholder: 4G
+          - label: Memory Guarantee
+            path: singleuser.memory.guarantee
+            type: text
+            placeholder: 1G
+      - title: Single-User Storage
+        fields:
+          - label: Storage Type
+            path: singleuser.storage.type
+            type: select
+            default: none
+            options: [none, dynamic]
+            help: "dynamic provisions a persistent PVC per user."
+          - label: Storage Class
+            path: singleuser.storage.dynamic.storageClass
+            type: text
+            default: rook-ceph-block
+            showWhen:
+              path: singleuser.storage.type
+              value: dynamic
+          - label: Storage Size
+            path: singleuser.storage.capacity
+            type: text
+            default: 5Gi
+            showWhen:
+              path: singleuser.storage.type
+              value: dynamic
