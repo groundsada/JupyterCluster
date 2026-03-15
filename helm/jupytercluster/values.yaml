@@ -88,6 +88,9 @@ config:
   # These are applied before user-supplied values, so users can override them.
   # prePuller is disabled by default: it uses DaemonSets which many clusters block.
   defaultHubValues:
+    proxy:
+      service:
+        type: ClusterIP
     prePuller:
       hook:
         enabled: false
@@ -95,6 +98,8 @@ config:
         enabled: false
     scheduling:
       userScheduler:
+        enabled: false
+      userPlaceholder:
         enabled: false
   # Allow JupyterCluster to create new Kubernetes namespaces for hubs.
   # Set to false to restrict JupyterCluster to only use pre-existing namespaces.

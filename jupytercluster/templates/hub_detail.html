@@ -92,23 +92,12 @@
           <div class="card-body">
             <form method="post" action="{{ base_url }}hubs/{{ hub.name }}">
               <input type="hidden" name="_xsrf" value="{{ xsrf }}" />
-              <div class="mb-3">
-                <label for="values" class="form-label">Helm Values (YAML)</label>
-                <textarea class="form-control font-monospace" 
-                          id="values" 
-                          name="values" 
-                          rows="15"
-                          placeholder="hub:
-  config:
-    JupyterHub:
-      authenticator_class: dummy">{{ hub.values_yaml if hub.values_yaml else '' }}</textarea>
-                <small class="form-text text-muted">
-                  Edit the Helm values configuration in YAML format. Leave empty to use defaults.
-                </small>
+              {% include "helm_values_editor.html" %}
+              <div class="mt-3">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fa fa-save"></i> Update Values
+                </button>
               </div>
-              <button type="submit" class="btn btn-primary">
-                <i class="fa fa-save"></i> Update Values
-              </button>
             </form>
           </div>
         </div>

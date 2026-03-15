@@ -1,0 +1,65 @@
+image:
+  repository: ghcr.io/groundsada/jupytercluster
+  tag: develop
+  pullPolicy: Always
+
+ingress:
+  enabled: true
+  className: haproxy
+  hosts:
+    - host: jupytercluster-mfsada-temp.nrp-nautilus.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - jupytercluster-mfsada-temp.nrp-nautilus.io
+      secretName: jupytercluster-tls
+
+config:
+  dbUrl: "sqlite:////data/jupytercluster.db"
+
+  # No prefix — hub name is used as namespace name exactly
+  defaultNamespacePrefix: ""
+
+  # Only pre-existing namespaces are allowed; JupyterCluster will not create new ones
+  allowNamespaceCreation: false
+
+  # Non-admin users may create/delete hubs (namespace must already exist)
+  allowUserNamespaceManagement: true
+
+  # Do not delete namespaces when a hub is deleted
+  allowNamespaceDeletion: false
+
+  # Global JupyterHub defaults applied to every hub deployment.
+  # Disables prePuller DaemonSets (blocked by admission webhook) and userScheduler.
+  defaultHubValues:
+    proxy:
+      service:
+        type: ClusterIP
+    prePuller:
+      hook:
+        enabled: false
+      continuous:
+        enabled: false
+    scheduling:
+      userScheduler:
+        enabled: false
+      userPlaceholder:
+        enabled: false
+
+  authenticator:
+    class: "jupytercluster.auth.SimpleAuthenticator"
+    users:
+      mfsada: mfsada123
+    adminUsers:
+      mfsada: true
+
+  defaultUsers:
+    mfsada:
+      admin: true
+      allowed_namespaces:
+        - mfsada-temp-jc
+        - mfsada-jc
+        - mfsada-test-armada
+        - mfsada-test-armada2

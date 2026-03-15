@@ -1,0 +1,274 @@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+
+<!-- Hidden textarea that gets submitted -->
+<textarea id="values" name="values" style="display:none">{{ existing_values_yaml }}</textarea>
+
+<ul class="nav nav-tabs mb-3" id="helm-editor-tabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="simple-tab" data-bs-toggle="tab" data-bs-target="#simple-editor-pane" type="button" role="tab" aria-controls="simple-editor-pane" aria-selected="true">
+      <i class="fa fa-sliders"></i> Simple Editor
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced-editor-pane" type="button" role="tab" aria-controls="advanced-editor-pane" aria-selected="false">
+      <i class="fa fa-code"></i> Advanced (YAML)
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <!-- Simple Editor Tab -->
+  <div class="tab-pane fade show active" id="simple-editor-pane" role="tabpanel" aria-labelledby="simple-tab">
+
+    <!-- Proxy Section -->
+    <h6 class="text-muted mb-2">Proxy</h6>
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Service Type</label>
+        <select class="form-select" name="ui_proxy_service_type">
+          <option value="ClusterIP" selected>ClusterIP (default)</option>
+          <option value="NodePort">NodePort</option>
+        </select>
+        <small class="form-text text-muted">ClusterIP is required on most managed clusters.</small>
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <!-- Hub Database Section -->
+    <h6 class="text-muted mb-2">Hub Database</h6>
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <label class="form-label">DB Type</label>
+        <select class="form-select" name="ui_hub_db_type">
+          <option value="sqlite-memory" selected>sqlite-memory (default)</option>
+          <option value="sqlite-pvc">sqlite-pvc (persistent)</option>
+        </select>
+      </div>
+    </div>
+    <div id="hub-db-pvc-fields" style="display:none">
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label">Storage Class</label>
+          <input type="text" class="form-control" name="ui_hub_db_storageclass" placeholder="rook-ceph-block" value="rook-ceph-block">
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label">PVC Size</label>
+          <input type="text" class="form-control" name="ui_hub_db_size" placeholder="1Gi" value="1Gi">
+        </div>
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <!-- Single-User Image Section -->
+    <h6 class="text-muted mb-2">Single-User Image</h6>
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Image Name</label>
+        <input type="text" class="form-control" name="ui_image_name" placeholder="quay.io/jupyter/scipy-notebook">
+      </div>
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Image Tag</label>
+        <input type="text" class="form-control" name="ui_image_tag" placeholder="latest">
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <!-- Single-User Resources Section -->
+    <h6 class="text-muted mb-2">Single-User Resources</h6>
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <label class="form-label">CPU Limit</label>
+        <input type="number" class="form-control" name="ui_cpu_limit" step="0.1" placeholder="2">
+      </div>
+      <div class="col-md-6 mb-3">
+        <label class="form-label">CPU Guarantee</label>
+        <input type="number" class="form-control" name="ui_cpu_guarantee" step="0.1" placeholder="0.5">
+      </div>
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Memory Limit</label>
+        <input type="text" class="form-control" name="ui_mem_limit" placeholder="4G">
+      </div>
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Memory Guarantee</label>
+        <input type="text" class="form-control" name="ui_mem_guarantee" placeholder="1G">
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <!-- Single-User Storage Section -->
+    <h6 class="text-muted mb-2">Single-User Storage</h6>
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Storage Type</label>
+        <select class="form-select" name="ui_storage_type">
+          <option value="none" selected>none (default — no persistent storage)</option>
+          <option value="dynamic">dynamic (persistent PVC per user)</option>
+        </select>
+      </div>
+    </div>
+    <div id="storage-dynamic-fields" style="display:none">
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label">Storage Class</label>
+          <input type="text" class="form-control" name="ui_storage_class" placeholder="rook-ceph-block" value="rook-ceph-block">
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label">Storage Size</label>
+          <input type="text" class="form-control" name="ui_storage_size" placeholder="5Gi" value="5Gi">
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.tab-pane simple -->
+
+  <!-- Advanced (YAML) Tab -->
+  <div class="tab-pane fade" id="advanced-editor-pane" role="tabpanel" aria-labelledby="advanced-tab">
+    <textarea class="form-control font-monospace" id="values-yaml-editor" rows="15" placeholder="hub: ..."></textarea>
+    <small class="form-text text-muted">Edit raw YAML. Switching back to Simple Editor will attempt to parse your changes.</small>
+  </div>
+</div><!-- /.tab-content -->
+
+<script>
+// Show/hide conditional fields
+document.querySelector('[name=ui_hub_db_type]').addEventListener('change', function() {
+  document.getElementById('hub-db-pvc-fields').style.display = this.value === 'sqlite-pvc' ? '' : 'none';
+});
+document.querySelector('[name=ui_storage_type]').addEventListener('change', function() {
+  document.getElementById('storage-dynamic-fields').style.display = this.value === 'dynamic' ? '' : 'none';
+});
+
+// Build values object from form fields
+function buildValuesFromForm() {
+  const get = name => document.querySelector(`[name=${name}]`)?.value?.trim();
+  const values = {};
+
+  // Proxy
+  const proxyType = get('ui_proxy_service_type');
+  if (proxyType && proxyType !== 'ClusterIP') {
+    values.proxy = { service: { type: proxyType } };
+  } else {
+    values.proxy = { service: { type: 'ClusterIP' } };
+  }
+
+  // Hub DB
+  const dbType = get('ui_hub_db_type');
+  if (dbType) {
+    values.hub = values.hub || {};
+    values.hub.db = { type: dbType };
+    if (dbType === 'sqlite-pvc') {
+      const sc = get('ui_hub_db_storageclass');
+      const size = get('ui_hub_db_size');
+      values.hub.db.pvc = {};
+      if (sc) values.hub.db.pvc.storageClassName = sc;
+      if (size) values.hub.db.pvc.storage = size;
+    }
+  }
+
+  // Singleuser
+  values.singleuser = values.singleuser || {};
+  const imgName = get('ui_image_name');
+  const imgTag = get('ui_image_tag');
+  if (imgName) values.singleuser.image = { name: imgName, tag: imgTag || 'latest' };
+
+  const cpuLimit = get('ui_cpu_limit');
+  const cpuGuarantee = get('ui_cpu_guarantee');
+  if (cpuLimit || cpuGuarantee) {
+    values.singleuser.cpu = {};
+    if (cpuLimit) values.singleuser.cpu.limit = parseFloat(cpuLimit);
+    if (cpuGuarantee) values.singleuser.cpu.guarantee = parseFloat(cpuGuarantee);
+  }
+
+  const memLimit = get('ui_mem_limit');
+  const memGuarantee = get('ui_mem_guarantee');
+  if (memLimit || memGuarantee) {
+    values.singleuser.memory = {};
+    if (memLimit) values.singleuser.memory.limit = memLimit;
+    if (memGuarantee) values.singleuser.memory.guarantee = memGuarantee;
+  }
+
+  const storageType = get('ui_storage_type');
+  if (storageType && storageType !== 'none') {
+    const sc = get('ui_storage_class');
+    const size = get('ui_storage_size');
+    values.singleuser.storage = { type: 'dynamic', dynamic: {} };
+    if (sc) values.singleuser.storage.dynamic.storageClass = sc;
+    if (size) values.singleuser.storage.capacity = size;
+  } else {
+    values.singleuser.storage = { type: 'none' };
+  }
+
+  return values;
+}
+
+// Populate form fields from a values object
+function populateFormFromValues(values) {
+  const set = (name, val) => { const el = document.querySelector(`[name=${name}]`); if (el && val !== undefined && val !== null) el.value = val; };
+  set('ui_proxy_service_type', values?.proxy?.service?.type || 'ClusterIP');
+  set('ui_hub_db_type', values?.hub?.db?.type || 'sqlite-memory');
+  set('ui_hub_db_storageclass', values?.hub?.db?.pvc?.storageClassName || 'rook-ceph-block');
+  set('ui_hub_db_size', values?.hub?.db?.pvc?.storage || '1Gi');
+  set('ui_image_name', values?.singleuser?.image?.name || '');
+  set('ui_image_tag', values?.singleuser?.image?.tag || '');
+  set('ui_cpu_limit', values?.singleuser?.cpu?.limit || '');
+  set('ui_cpu_guarantee', values?.singleuser?.cpu?.guarantee || '');
+  set('ui_mem_limit', values?.singleuser?.memory?.limit || '');
+  set('ui_mem_guarantee', values?.singleuser?.memory?.guarantee || '');
+  const storageType = values?.singleuser?.storage?.type || 'none';
+  set('ui_storage_type', storageType);
+  set('ui_storage_class', values?.singleuser?.storage?.dynamic?.storageClass || 'rook-ceph-block');
+  set('ui_storage_size', values?.singleuser?.storage?.capacity || '5Gi');
+  // Trigger change events to show/hide conditional fields
+  document.querySelector('[name=ui_hub_db_type]').dispatchEvent(new Event('change'));
+  document.querySelector('[name=ui_storage_type]').dispatchEvent(new Event('change'));
+}
+
+// When switching to Advanced tab, sync form -> YAML editor
+document.getElementById('advanced-tab').addEventListener('shown.bs.tab', function() {
+  const values = buildValuesFromForm();
+  document.getElementById('values-yaml-editor').value = jsyaml.dump(values, { indent: 2 });
+});
+
+// When switching to Simple tab, sync YAML editor -> form
+document.getElementById('simple-tab').addEventListener('shown.bs.tab', function() {
+  try {
+    const yaml = document.getElementById('values-yaml-editor').value;
+    const values = yaml ? jsyaml.load(yaml) : {};
+    populateFormFromValues(values || {});
+  } catch(e) {
+    console.warn('Could not parse YAML:', e);
+  }
+});
+
+// On form submit, write values into hidden textarea
+document.querySelector('form').addEventListener('submit', function() {
+  const activeTab = document.querySelector('#helm-editor-tabs .nav-link.active');
+  let yaml;
+  if (activeTab && activeTab.id === 'advanced-tab') {
+    yaml = document.getElementById('values-yaml-editor').value;
+  } else {
+    const values = buildValuesFromForm();
+    yaml = jsyaml.dump(values, { indent: 2 });
+  }
+  document.getElementById('values').value = yaml;
+});
+
+// On page load, if there are existing values, populate the form
+window.addEventListener('DOMContentLoaded', function() {
+  const existingYaml = document.getElementById('values').value;
+  if (existingYaml && existingYaml.trim()) {
+    try {
+      const values = jsyaml.load(existingYaml);
+      populateFormFromValues(values || {});
+      // Also populate the YAML editor
+      document.getElementById('values-yaml-editor').value = existingYaml;
+    } catch(e) {
+      console.warn('Could not parse existing YAML:', e);
+      document.getElementById('values-yaml-editor').value = existingYaml;
+    }
+  }
+});
+</script>

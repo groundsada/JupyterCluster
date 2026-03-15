@@ -89,6 +89,7 @@ class BaseHandler(web.RequestHandler):
             kwargs.setdefault("allowed_namespaces", [])
             kwargs.setdefault("max_hubs", None)
             kwargs.setdefault("current_hub_count", 0)
+            kwargs.setdefault("existing_values_yaml", "")
             kwargs.setdefault(
                 "default_namespace_prefix",
                 (
@@ -101,6 +102,7 @@ class BaseHandler(web.RequestHandler):
         # Hub detail template specific variables
         if name == "hub_detail.html":
             kwargs.setdefault("error", None)
+            kwargs.setdefault("existing_values_yaml", "")
 
         # XSRF token for forms
         try:

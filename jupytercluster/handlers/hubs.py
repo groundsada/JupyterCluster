@@ -38,6 +38,7 @@ class HubCreateHandler(BaseHandler):
             allowed_namespaces=allowed_namespaces,
             max_hubs=max_hubs,
             current_hub_count=current_hub_count,
+            existing_values_yaml="",
         )
 
     async def post(self):
@@ -51,14 +52,20 @@ class HubCreateHandler(BaseHandler):
         values_str = self.get_argument("values", "")
 
         if not hub_name:
-            self.render_template("hub_create.html", error="Hub name is required")
+            self.render_template(
+                "hub_create.html",
+                error="Hub name is required",
+                existing_values_yaml=values_str,
+            )
             return
 
         try:
             values = parse_config(values_str) if values_str else {}
         except ValueError as e:
             self.render_template(
-                "hub_create.html", error=f"Invalid YAML or JSON in values field: {str(e)}"
+                "hub_create.html",
+                error=f"Invalid YAML or JSON in values field: {str(e)}",
+                existing_values_yaml=values_str,
             )
             return
 
@@ -66,7 +73,11 @@ class HubCreateHandler(BaseHandler):
 
         # Check if hub already exists
         if hub_name in app.hubs:
-            self.render_template("hub_create.html", error=f"Hub {hub_name} already exists")
+            self.render_template(
+                "hub_create.html",
+                error=f"Hub {hub_name} already exists",
+                existing_values_yaml=values_str,
+            )
             return
 
         try:
@@ -82,7 +93,11 @@ class HubCreateHandler(BaseHandler):
             self.redirect(f"/hubs/{hub_name}")
         except Exception as e:
             logger.error(f"Failed to create hub {hub_name}: {e}")
-            self.render_template("hub_create.html", error=f"Failed to create hub: {str(e)}")
+            self.render_template(
+                "hub_create.html",
+                error=f"Failed to create hub: {str(e)}",
+                existing_values_yaml=values_str,
+            )
 
 
 class HubDetailHandler(BaseHandler):
@@ -123,7 +138,7 @@ class HubDetailHandler(BaseHandler):
 
         # Convert dict to object for template compatibility (Tornado templates use attribute access)
         hub_obj = DictObject(hub_dict)
-        self.render_template("hub_detail.html", hub=hub_obj)
+        self.render_template("hub_detail.html", hub=hub_obj, existing_values_yaml=hub_dict["values_yaml"])
 
     async def post(self, hub_name: str):
         """Handle hub actions (start, stop, delete)"""
@@ -164,6 +179,7 @@ class HubDetailHandler(BaseHandler):
                     self.render_template(
                         "hub_detail.html",
                         hub=hub_obj,
+                        existing_values_yaml=hub_dict["values_yaml"],
                         error=f"Invalid YAML or JSON in values: {str(e)}",
                     )
                     return
@@ -213,7 +229,10 @@ class HubDetailHandler(BaseHandler):
                     )
                 hub_obj = DictObject(hub_dict)
                 self.render_template(
-                    "hub_detail.html", hub=hub_obj, error=f"Failed to {action} hub: {str(e)}"
+                    "hub_detail.html",
+                    hub=hub_obj,
+                    existing_values_yaml=hub_dict["values_yaml"],
+                    error=f"Failed to {action} hub: {str(e)}",
                 )
             else:
                 raise
