@@ -350,7 +350,9 @@ class HubSpawner(LoggingConfigurable):
             try:
                 merged_values = json.loads(_global_defaults_raw)
             except json.JSONDecodeError:
-                self.log.warning("Could not parse JUPYTERCLUSTER_DEFAULT_HUB_VALUES — skipping global defaults")
+                self.log.warning(
+                    "Could not parse JUPYTERCLUSTER_DEFAULT_HUB_VALUES — skipping global defaults"
+                )
 
         # Apply per-hub default values on top of global defaults
         merged_values.update(self.default_values)
