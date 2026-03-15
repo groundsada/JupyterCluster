@@ -29,7 +29,7 @@ def cleanup_hubs(admin_session):
         admin_session.delete(f"{BASE_URL}/api/hubs/{name}")
 
 
-def _user_session(admin_session, username: str) -> tuple[requests.Session, str]:
+def _user_session(admin_session, username: str):
     """Create a Bearer-token session for *username*; return (session, token_id)."""
     r = admin_session.post(
         f"{BASE_URL}/api/users/{username}/tokens",
