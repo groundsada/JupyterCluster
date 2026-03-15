@@ -50,6 +50,10 @@ spec:
             - name: JUPYTERCLUSTER_DEFAULT_HUB_VALUES
               value: {{ .Values.config.defaultHubValues | toJson | quote }}
             {{- end }}
+            {{- if .Values.config.hubValuesSchema }}
+            - name: JUPYTERCLUSTER_HUB_VALUES_SCHEMA
+              value: {{ .Values.config.hubValuesSchema | toJson | quote }}
+            {{- end }}
             - name: JUPYTERCLUSTER_ALLOW_NAMESPACE_CREATION
               value: {{ .Values.config.allowNamespaceCreation | toString | quote }}
             - name: JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT

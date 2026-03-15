@@ -104,6 +104,17 @@ class BaseHandler(web.RequestHandler):
             kwargs.setdefault("error", None)
             kwargs.setdefault("existing_values_yaml", "")
 
+        # Inject hub values schema for templates that include the editor
+        if name in ("hub_create.html", "hub_detail.html"):
+            import json as _json
+
+            schema = (
+                self.jupytercluster.get_hub_values_schema()
+                if self.jupytercluster
+                else {}
+            )
+            kwargs.setdefault("hub_values_schema_json", _json.dumps(schema))
+
         # XSRF token for forms
         try:
             kwargs.setdefault("xsrf", self.xsrf_token.decode("utf-8") if self.xsrf_token else "")

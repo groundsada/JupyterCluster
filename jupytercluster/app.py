@@ -36,6 +36,128 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Default schema for the hub values GUI editor.
+# Admins can override this via JUPYTERCLUSTER_HUB_VALUES_SCHEMA (JSON string or file path).
+DEFAULT_HUB_VALUES_SCHEMA = {
+    "groups": [
+        {
+            "title": "Proxy",
+            "fields": [
+                {
+                    "label": "Service Type",
+                    "path": "proxy.service.type",
+                    "type": "select",
+                    "default": "ClusterIP",
+                    "options": ["ClusterIP", "NodePort"],
+                    "help": "ClusterIP is required on most managed clusters. LoadBalancer is blocked by admission webhooks on many clusters.",
+                }
+            ],
+        },
+        {
+            "title": "Hub Database",
+            "fields": [
+                {
+                    "label": "DB Type",
+                    "path": "hub.db.type",
+                    "type": "select",
+                    "default": "sqlite-memory",
+                    "options": ["sqlite-memory", "sqlite-pvc"],
+                    "help": "sqlite-memory is ephemeral (lost on restart). sqlite-pvc persists data to a PVC.",
+                },
+                {
+                    "label": "Storage Class",
+                    "path": "hub.db.pvc.storageClassName",
+                    "type": "text",
+                    "default": "standard",
+                    "showWhen": {"path": "hub.db.type", "value": "sqlite-pvc"},
+                },
+                {
+                    "label": "PVC Size",
+                    "path": "hub.db.pvc.storage",
+                    "type": "text",
+                    "default": "1Gi",
+                    "showWhen": {"path": "hub.db.type", "value": "sqlite-pvc"},
+                },
+            ],
+        },
+        {
+            "title": "Single-User Image",
+            "fields": [
+                {
+                    "label": "Image Name",
+                    "path": "singleuser.image.name",
+                    "type": "text",
+                    "placeholder": "quay.io/jupyter/scipy-notebook",
+                },
+                {
+                    "label": "Image Tag",
+                    "path": "singleuser.image.tag",
+                    "type": "text",
+                    "placeholder": "latest",
+                },
+            ],
+        },
+        {
+            "title": "Single-User Resources",
+            "fields": [
+                {
+                    "label": "CPU Limit",
+                    "path": "singleuser.cpu.limit",
+                    "type": "number",
+                    "step": 0.1,
+                    "placeholder": "2",
+                },
+                {
+                    "label": "CPU Guarantee",
+                    "path": "singleuser.cpu.guarantee",
+                    "type": "number",
+                    "step": 0.1,
+                    "placeholder": "0.5",
+                },
+                {
+                    "label": "Memory Limit",
+                    "path": "singleuser.memory.limit",
+                    "type": "text",
+                    "placeholder": "4G",
+                },
+                {
+                    "label": "Memory Guarantee",
+                    "path": "singleuser.memory.guarantee",
+                    "type": "text",
+                    "placeholder": "1G",
+                },
+            ],
+        },
+        {
+            "title": "Single-User Storage",
+            "fields": [
+                {
+                    "label": "Storage Type",
+                    "path": "singleuser.storage.type",
+                    "type": "select",
+                    "default": "none",
+                    "options": ["none", "dynamic"],
+                    "help": "dynamic provisions a persistent PVC per user.",
+                },
+                {
+                    "label": "Storage Class",
+                    "path": "singleuser.storage.dynamic.storageClass",
+                    "type": "text",
+                    "default": "standard",
+                    "showWhen": {"path": "singleuser.storage.type", "value": "dynamic"},
+                },
+                {
+                    "label": "Storage Size",
+                    "path": "singleuser.storage.capacity",
+                    "type": "text",
+                    "default": "5Gi",
+                    "showWhen": {"path": "singleuser.storage.type", "value": "dynamic"},
+                },
+            ],
+        },
+    ]
+}
+
 
 class JupyterCluster(Application):
     """Main JupyterCluster application"""
@@ -81,6 +203,15 @@ class JupyterCluster(Application):
             "Origins permitted for CORS requests to the API. "
             "Use ['*'] to allow all origins (not recommended in production). "
             "Empty list (default) disables CORS headers."
+        ),
+    ).tag(config=True)
+
+    hub_values_schema = TraitDict(
+        {},
+        help=(
+            "JSON schema driving the hub values GUI editor. "
+            "When empty, the built-in DEFAULT_HUB_VALUES_SCHEMA is used. "
+            "Set via JUPYTERCLUSTER_HUB_VALUES_SCHEMA env var (JSON string or path to a JSON file)."
         ),
     ).tag(config=True)
 
@@ -158,10 +289,32 @@ class JupyterCluster(Application):
             self.allow_namespace_deletion = _parse_bool(
                 env["JUPYTERCLUSTER_ALLOW_NAMESPACE_DELETION"]
             )
+        if "JUPYTERCLUSTER_HUB_VALUES_SCHEMA" in env:
+            raw = env["JUPYTERCLUSTER_HUB_VALUES_SCHEMA"].strip()
+            if raw:
+                # Support both inline JSON and a file path
+                if raw.startswith("{") or raw.startswith("["):
+                    try:
+                        self.hub_values_schema = json.loads(raw)
+                    except json.JSONDecodeError as e:
+                        logger.warning("Could not parse JUPYTERCLUSTER_HUB_VALUES_SCHEMA: %s", e)
+                else:
+                    # Treat as file path
+                    try:
+                        with open(raw) as f:
+                            self.hub_values_schema = json.load(f)
+                    except (OSError, json.JSONDecodeError) as e:
+                        logger.warning(
+                            "Could not load JUPYTERCLUSTER_HUB_VALUES_SCHEMA from %s: %s", raw, e
+                        )
         if "JUPYTERCLUSTER_CORS_ALLOW_ORIGINS" in env:
             raw = env["JUPYTERCLUSTER_CORS_ALLOW_ORIGINS"].strip()
             if raw:
                 self.cors_allow_origins = [o.strip() for o in raw.split(",") if o.strip()]
+
+    def get_hub_values_schema(self) -> dict:
+        """Return the effective hub values schema (custom or built-in default)."""
+        return self.hub_values_schema if self.hub_values_schema else DEFAULT_HUB_VALUES_SCHEMA
 
     def _can_user_create_namespace(self, username: str) -> bool:
         """Check whether a user is permitted to create namespaces (and thus hubs).

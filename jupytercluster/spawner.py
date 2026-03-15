@@ -580,6 +580,7 @@ class HubSpawner(LoggingConfigurable):
                 "helm",
                 "upgrade",
                 "--install",
+                "--cleanup-on-fail",  # Roll back newly created resources if upgrade fails
                 self.helm_release_name,
                 self.helm_chart,
                 "--namespace",
@@ -616,6 +617,62 @@ class HubSpawner(LoggingConfigurable):
             if process.returncode != 0:
                 error_msg = stderr.decode() if stderr else stdout.decode()
                 self.log.error(f"Helm deployment failed: {error_msg}")
+
+                # Recover from a release stuck in "pending-install" state.
+                # This happens when a previous install was interrupted before
+                # Helm could record a successful revision.
+                if "release: already exists" in error_msg or (
+                    "cannot re-use a name that is still in use" in error_msg
+                ):
+                    self.log.warning(
+                        f"Release {self.helm_release_name} is stuck in pending state — "
+                        "attempting rollback then retry."
+                    )
+                    # Try rollback first (cheaper than uninstall)
+                    rollback = await asyncio.create_subprocess_exec(
+                        "helm",
+                        "rollback",
+                        self.helm_release_name,
+                        "--namespace",
+                        self.namespace,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await rollback.communicate()
+                    if rollback.returncode != 0:
+                        # No prior revision to roll back to — uninstall instead
+                        self.log.warning(
+                            f"Rollback failed, uninstalling {self.helm_release_name}…"
+                        )
+                        uninstall = await asyncio.create_subprocess_exec(
+                            "helm",
+                            "uninstall",
+                            self.helm_release_name,
+                            "--namespace",
+                            self.namespace,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        await uninstall.communicate()
+
+                    # Retry deployment
+                    self.log.info("Retrying Helm deployment after recovery…")
+                    retry = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    r_stdout, r_stderr = await retry.communicate()
+                    if retry.returncode != 0:
+                        error_msg = r_stderr.decode() if r_stderr else r_stdout.decode()
+                        raise RuntimeError(
+                            f"Helm deployment failed after recovery: {error_msg}"
+                        )
+                    self.log.info(
+                        f"Helm release {self.helm_release_name} deployed successfully after recovery"
+                    )
+                    return
+
                 raise RuntimeError(f"Helm deployment failed: {error_msg}")
 
             self.log.info(f"Helm release {self.helm_release_name} deployed successfully")

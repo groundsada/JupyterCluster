@@ -91,6 +91,30 @@ config:
     proxy:
       service:
         type: ClusterIP
+      chp:
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      traefik:
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+    hub:
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
     prePuller:
       hook:
         enabled: false
@@ -101,6 +125,10 @@ config:
         enabled: false
       userPlaceholder:
         enabled: false
+  # JSON schema for the hub values GUI editor.
+  # Leave empty to use the built-in default schema.
+  # Provide a JSON object to customise the editor for your cluster.
+  hubValuesSchema: {}
   # Allow JupyterCluster to create new Kubernetes namespaces for hubs.
   # Set to false to restrict JupyterCluster to only use pre-existing namespaces.
   allowNamespaceCreation: true
