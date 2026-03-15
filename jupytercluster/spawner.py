@@ -569,10 +569,15 @@ class HubSpawner(LoggingConfigurable):
                 self.helm_chart,
                 "--namespace",
                 self.namespace,
-                "--create-namespace",
                 "--values",
                 values_file,
             ]
+
+            # Only ask Helm to create the namespace when the service account
+            # has permission to do so.  When namespace creation is disabled,
+            # the namespace must already exist.
+            if self._get_allow_namespace_creation():
+                cmd.insert(cmd.index("--values"), "--create-namespace")
 
             # Add chart version if specified
             if self.helm_chart_version:
