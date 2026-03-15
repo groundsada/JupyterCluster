@@ -340,8 +340,21 @@ class HubSpawner(LoggingConfigurable):
         # Ensure namespace exists
         await self._ensure_namespace()
 
-        # Merge default values with provided values
-        merged_values = {**self.default_values}
+        # Start with global defaults from JUPYTERCLUSTER_DEFAULT_HUB_VALUES env var.
+        # These are applied first so that hub-specific values can override them.
+        import os as _os
+
+        merged_values: Dict = {}
+        _global_defaults_raw = _os.environ.get("JUPYTERCLUSTER_DEFAULT_HUB_VALUES")
+        if _global_defaults_raw:
+            try:
+                merged_values = json.loads(_global_defaults_raw)
+            except json.JSONDecodeError:
+                self.log.warning("Could not parse JUPYTERCLUSTER_DEFAULT_HUB_VALUES — skipping global defaults")
+
+        # Apply per-hub default values on top of global defaults
+        merged_values.update(self.default_values)
+
         if values:
             # CRITICAL: Validate and sanitize user-provided values
             sanitized_values = self._validate_helm_values(values)

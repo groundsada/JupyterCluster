@@ -46,6 +46,10 @@ spec:
               value: {{ .Values.config.defaultNamespacePrefix | quote }}
             - name: JUPYTERCLUSTER_DEFAULT_HELM_CHART
               value: {{ .Values.config.defaultHelmChart | quote }}
+            {{- if .Values.config.defaultHubValues }}
+            - name: JUPYTERCLUSTER_DEFAULT_HUB_VALUES
+              value: {{ .Values.config.defaultHubValues | toJson | quote }}
+            {{- end }}
             - name: JUPYTERCLUSTER_ALLOW_NAMESPACE_CREATION
               value: {{ .Values.config.allowNamespaceCreation | toString | quote }}
             - name: JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT
