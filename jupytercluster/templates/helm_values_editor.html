@@ -1,7 +1,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 
 <!-- Schema injected by the server — admins can override via JUPYTERCLUSTER_HUB_VALUES_SCHEMA -->
-<script id="hub-values-schema" type="application/json">{{ hub_values_schema_json }}</script>
+<script id="hub-values-schema" type="application/json">{% raw hub_values_schema_json %}</script>
 
 <!-- Hidden textarea that gets submitted with the form -->
 <textarea id="values" name="values" style="display:none">{{ existing_values_yaml }}</textarea>
