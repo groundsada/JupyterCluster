@@ -1,14 +1,38 @@
 <style>
+  .immutable-field {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 8px 12px 6px;
+    pointer-events: none;
+    user-select: none;
+  }
   .immutable-field .form-control:disabled,
   .immutable-field .form-select:disabled {
-    background-color: #e9ecef;
-    opacity: 1;
+    background-color: #e9ecef !important;
+    opacity: 1 !important;
     cursor: not-allowed;
-    color: #495057;
+    color: #6c757d !important;
+    border-color: #ced4da;
   }
-  .immutable-field .form-check-input:disabled { opacity: 0.7; cursor: not-allowed; }
-  .immutable-field .form-label { color: #6c757d; }
+  .immutable-field .form-check-input:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed;
+  }
+  .immutable-field .form-label,
+  .immutable-field .form-check-label { color: #6c757d; font-size: 0.875em; }
   .immutable-field .input-group-text { background-color: #e9ecef; }
+  .immutable-badge {
+    font-size: 0.7em;
+    background: #6c757d;
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    vertical-align: middle;
+    font-weight: normal;
+    letter-spacing: 0.02em;
+  }
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
@@ -113,7 +137,7 @@
 
         const inputId = 'field-' + field.path.replace(/[\.\d]/g, c => c === '.' ? '-' : c);
         const disAttr = isImmutable ? ' disabled' : '';
-        const lockIcon = isImmutable ? ' <span title="Locked by admin" style="font-size:0.8em">&#128274;</span>' : '';
+        const lockBadge = isImmutable ? ' <span class="immutable-badge">&#128274; locked</span>' : '';
 
         let inputHtml;
 
@@ -151,8 +175,7 @@
           col.innerHTML = inputHtml +
             (field.help ? `<small class="form-text text-muted">${escHtml(field.help)}</small>` : '');
           if (isImmutable) {
-            // Put lock icon next to the check label
-            col.querySelector('.form-check-label').insertAdjacentHTML('beforeend', lockIcon);
+            col.querySelector('.form-check-label').insertAdjacentHTML('beforeend', lockBadge);
           }
           row.appendChild(col);
           return;
@@ -168,7 +191,7 @@
         }
 
         const labelHtml = field.type !== 'boolean'
-          ? `<label class="form-label" for="${inputId}">${escHtml(field.label)}${lockIcon}</label>`
+          ? `<label class="form-label" for="${inputId}">${escHtml(field.label)}${lockBadge}</label>`
           : '';
 
         col.innerHTML = `
@@ -226,6 +249,10 @@
         if (!subdomain) return;
         const hostname = subdomain + domain;
         value = [hostname];
+        // Enable ingress and httpRoute only when a valid hostname is provided,
+        // so we never submit an empty host (which counts as a wildcard).
+        setNestedValue(values, 'ingress.enabled', true);
+        setNestedValue(values, 'httpRoute.enabled', true);
         try {
           JSON.parse(el.dataset.mirrorPaths || '[]').forEach(mp => {
             setNestedValue(values, mp, [hostname]);

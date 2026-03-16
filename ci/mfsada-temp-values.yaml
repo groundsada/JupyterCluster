@@ -120,11 +120,12 @@ config:
       scheduling.userScheduler.enabled: false
       scheduling.userPlaceholder.enabled: false
 
-      # ── Ingress/httpRoute (hostname is user-set, infrastructure is fixed) ───
-      ingress.enabled: true
+      # ── Ingress/httpRoute infrastructure (enabled only when user provides hostname) ──
+      # ingress.enabled and httpRoute.enabled are NOT fixed here — they are set
+      # dynamically by the hostname field in the GUI only when a hostname is given,
+      # preventing an empty-host wildcard that the admission webhook blocks.
       ingress.ingressClassName: haproxy
       ingress.pathSuffix: ""
-      httpRoute.enabled: true
       httpRoute.gateway.name: ingress
       httpRoute.gateway.namespace: haproxy
     groups:
