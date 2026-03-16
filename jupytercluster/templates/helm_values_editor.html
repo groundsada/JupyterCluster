@@ -144,6 +144,7 @@
         if (field.type === 'hostname') {
           const domain = field.domain || '';
           const mirrorPaths = JSON.stringify(field.mirrorPaths || []);
+          const helpId = inputId + '-help-val';
           inputHtml = `
             <div class="input-group">
               <input type="text" class="form-control" id="${inputId}"
@@ -151,6 +152,7 @@
                      data-type="hostname"
                      data-domain="${escHtml(domain)}"
                      data-mirror-paths="${escHtml(mirrorPaths)}"
+                     data-help-id="${helpId}"
                      placeholder="${escHtml(field.placeholder || '')}"${disAttr}>
               <span class="input-group-text text-muted">${escHtml(domain)}</span>
             </div>`;
@@ -194,11 +196,19 @@
           ? `<label class="form-label" for="${inputId}">${escHtml(field.label)}${lockBadge}</label>`
           : '';
 
-        col.innerHTML = `
-          ${labelHtml}
-          ${inputHtml}
-          ${field.help ? `<small class="form-text text-muted">${escHtml(field.help)}</small>` : ''}
-        `;
+        // For hostname fields, replace {value} in help text with a live-updating span
+        let helpHtml = '';
+        if (field.help) {
+          if (field.type === 'hostname' && field.help.includes('{value}')) {
+            const helpId = inputId + '-help-val';
+            const parts = field.help.split('{value}');
+            helpHtml = `<small class="form-text text-muted">${escHtml(parts[0])}<strong id="${helpId}">…</strong>${escHtml(parts[1] || '')}</small>`;
+          } else {
+            helpHtml = `<small class="form-text text-muted">${escHtml(field.help)}</small>`;
+          }
+        }
+
+        col.innerHTML = `${labelHtml}${inputHtml}${helpHtml}`;
         row.appendChild(col);
       });
 
@@ -206,6 +216,18 @@
     });
 
     setupConditionalFields();
+
+    // Wire up live hostname preview in help text
+    document.querySelectorAll('#simple-editor-pane [data-type="hostname"]').forEach(el => {
+      const helpId = el.dataset.helpId;
+      if (!helpId) return;
+      const span = document.getElementById(helpId);
+      if (!span) return;
+      const domain = el.dataset.domain || '';
+      const update = () => { span.textContent = (el.value.trim() || '…') + domain; };
+      el.addEventListener('input', update);
+      update();
+    });
   }
 
   // ── Conditional visibility ─────────────────────────────────────────────

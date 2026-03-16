@@ -319,26 +319,6 @@ class HubSpawner(LoggingConfigurable):
                             )
                             singleuser["extraNodeAffinity"] = {}
 
-        # Disable HTTPRoute (Gateway API) - requires CRDs that may not be available
-        # HTTPRoute is a newer feature that requires Gateway API CRDs
-        # We'll disable it to ensure compatibility with standard Kubernetes clusters
-        if "httpRoute" in sanitized:
-            http_route = sanitized["httpRoute"]
-            if isinstance(http_route, dict) and http_route.get("enabled", False):
-                self.log.warning("Disabling httpRoute (Gateway API CRDs may not be available)")
-                http_route["enabled"] = False
-
-        # Also check inside hub config
-        if "hub" in sanitized:
-            hub = sanitized["hub"]
-            if isinstance(hub, dict) and "httpRoute" in hub:
-                http_route = hub["httpRoute"]
-                if isinstance(http_route, dict) and http_route.get("enabled", False):
-                    self.log.warning(
-                        "Disabling httpRoute in hub config (Gateway API CRDs may not be available)"
-                    )
-                    http_route["enabled"] = False
-
         return sanitized
 
     async def start(self, values: Optional[Dict] = None) -> Tuple[str, str]:
@@ -412,8 +392,11 @@ class HubSpawner(LoggingConfigurable):
         # Deploy using Helm (namespace is set via --namespace flag, not in values)
         await self._deploy_helm_release(merged_values)
 
-        # Wait for hub to be ready
-        url = await self._wait_for_hub_ready()
+        # Determine URL: prefer the hostname already configured in ingress/httpRoute
+        # rather than discovering it from K8s (which has timing/availability issues).
+        url = self._url_from_values(merged_values)
+        if not url:
+            url = await self._wait_for_hub_ready()
 
         return self.namespace, url
 
@@ -778,6 +761,24 @@ class HubSpawner(LoggingConfigurable):
             if "not found" not in error_msg.lower():
                 self.log.error(f"Helm deletion failed: {error_msg}")
                 raise RuntimeError(f"Helm deletion failed: {error_msg}")
+
+    def _url_from_values(self, values: Dict) -> str:
+        """Return the hub URL derived from ingress/httpRoute config in *values*, or ''."""
+        ingress = values.get("ingress") or {}
+        if ingress.get("enabled"):
+            hosts = ingress.get("hosts") or []
+            host = hosts[0] if isinstance(hosts, list) and hosts else None
+            if host and isinstance(host, str):
+                return f"https://{host}"
+
+        http_route = values.get("httpRoute") or {}
+        if http_route.get("enabled"):
+            hostnames = http_route.get("hostnames") or []
+            host = hostnames[0] if isinstance(hostnames, list) and hostnames else None
+            if host and isinstance(host, str):
+                return f"https://{host}"
+
+        return ""
 
     async def _wait_for_hub_ready(self) -> str:
         """Wait for hub to be ready and return its URL"""

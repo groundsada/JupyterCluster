@@ -99,10 +99,7 @@ class HubInstance(LoggingConfigurable):
         if values:
             merged_values.update(values)
 
-        # CRITICAL: Validate and sanitize values before using them
-        # This ensures httpRoute is disabled, extraVolumes/extraVolumeMounts are fixed, etc.
         spawner = self.get_spawner()
-        merged_values = spawner._validate_helm_values(merged_values)
 
         # Update status
         self.status = "pending"
