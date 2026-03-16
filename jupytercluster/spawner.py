@@ -383,6 +383,18 @@ class HubSpawner(LoggingConfigurable):
                 self.log.warning(f"Field '{field}' is not a dict, converting to dict")
                 merged_values[field] = default_value
 
+        # Auto-enable ingress/httpRoute when hosts are configured but enabled flag is missing.
+        # This handles hubs created before the hostname field was added, and guards against the
+        # form omitting the enabled flag (which would silently skip Ingress/HTTPRoute creation).
+        _ingress = merged_values.get("ingress") or {}
+        if isinstance(_ingress, dict) and _ingress.get("hosts"):
+            _ingress["enabled"] = True
+            merged_values["ingress"] = _ingress
+        _http_route = merged_values.get("httpRoute") or {}
+        if isinstance(_http_route, dict) and _http_route.get("hostnames"):
+            _http_route["enabled"] = True
+            merged_values["httpRoute"] = _http_route
+
         # CRITICAL: Do NOT add namespace to values - it's set via --namespace flag in Helm command
         # The JupyterHub Helm chart doesn't accept namespace in values, and we control
         # the namespace via the --namespace flag to ensure users cannot deploy to other namespaces
