@@ -32,35 +32,8 @@ config:
   allowNamespaceDeletion: false
 
   # Global JupyterHub defaults applied to every hub deployment.
-  # Disables prePuller DaemonSets (blocked by admission webhook) and userScheduler.
+  # Only contains values not already enforced by hubValuesSchema.fixed above.
   defaultHubValues:
-    proxy:
-      service:
-        type: ClusterIP
-      chp:
-        resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
-      traefik:
-        resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
-    hub:
-      resources:
-        requests:
-          cpu: "200m"
-          memory: "512Mi"
-        limits:
-          cpu: "1"
-          memory: "1Gi"
     prePuller:
       hook:
         enabled: false
@@ -95,27 +68,51 @@ config:
   hubValuesSchema:
     allowAdvancedYaml: false
     fixed:
+      # ── Hub database (NRP standard) ─────────────────────────────────────────
       hub.db.type: sqlite-pvc
       hub.db.pvc.storageClassName: rook-ceph-block
       hub.db.pvc.storage: 1Gi
+      # Recreate strategy required for RWO PVCs (avoids two pods fighting over the volume)
+      hub.deploymentStrategy.type: Recreate
+      hub.networkPolicy.enabled: false
+
+      # ── Hub resources (NRP spec) ────────────────────────────────────────────
+      hub.resources.requests.cpu: "100m"
+      hub.resources.requests.memory: "512Mi"
+      hub.resources.limits.cpu: "2"
+      hub.resources.limits.memory: "1Gi"
+
+      # ── Proxy (NRP spec) ────────────────────────────────────────────────────
+      proxy.service.type: ClusterIP
+      proxy.chp.resources.requests.cpu: "1"
+      proxy.chp.resources.requests.memory: "512Mi"
+      proxy.chp.resources.limits.cpu: "6"
+      proxy.chp.resources.limits.memory: "10Gi"
+
+      # ── Single-user pods (NRP spec) ─────────────────────────────────────────
+      singleuser.uid: 0
+      singleuser.fsGid: 100
+      singleuser.extraEnv.GRANT_SUDO: "yes"
+      singleuser.extraPodConfig.securityContext.fsGroupChangePolicy: "OnRootMismatch"
+      singleuser.extraPodConfig.securityContext.fsGroup: 100
+      singleuser.cloudMetadata.blockWithIptables: false
+      singleuser.networkPolicy.enabled: false
+      singleuser.defaultUrl: "/lab"
+
+      # ── Single-user storage (NRP standard: dynamic RWO on rook-ceph-block) ──
+      # capacity is intentionally NOT fixed — users set it in the Simple Editor
+      singleuser.storage.type: dynamic
+      singleuser.storage.homeMountPath: /home/jovyan
+      singleuser.storage.dynamic.storageClass: rook-ceph-block
+
+      # ── Culling (always on, not user-configurable) ──────────────────────────
       cull.enabled: true
       cull.timeout: 3600
+      cull.every: 600
+      cull.concurrency: 10
       cull.maxAge: 0
       cull.users: false
-      # Cluster admission webhook requires all containers to have limits+requests.
-      # These are enforced via fixed so they survive any user value merging.
-      hub.resources.requests.cpu: "200m"
-      hub.resources.requests.memory: "512Mi"
-      hub.resources.limits.cpu: "1"
-      hub.resources.limits.memory: "1Gi"
-      proxy.chp.resources.requests.cpu: "100m"
-      proxy.chp.resources.requests.memory: "128Mi"
-      proxy.chp.resources.limits.cpu: "500m"
-      proxy.chp.resources.limits.memory: "512Mi"
-      proxy.traefik.resources.requests.cpu: "100m"
-      proxy.traefik.resources.requests.memory: "128Mi"
-      proxy.traefik.resources.limits.cpu: "500m"
-      proxy.traefik.resources.limits.memory: "512Mi"
+      cull.removeNamedServers: false
     groups:
       - title: Single-User Image
         fields:
@@ -149,23 +146,10 @@ config:
             placeholder: 1G
       - title: Single-User Storage
         fields:
-          - label: Storage Type
-            path: singleuser.storage.type
-            type: select
-            default: none
-            options: [none, dynamic]
-            help: "dynamic provisions a persistent PVC per user."
-          - label: Storage Class
-            path: singleuser.storage.dynamic.storageClass
-            type: text
-            default: rook-ceph-block
-            showWhen:
-              path: singleuser.storage.type
-              value: dynamic
+          # Storage type and class are fixed to dynamic/rook-ceph-block by this cluster's policy.
+          # Only capacity is user-configurable.
           - label: Storage Size
             path: singleuser.storage.capacity
             type: text
             default: 5Gi
-            showWhen:
-              path: singleuser.storage.type
-              value: dynamic
+            help: "Persistent home directory size (e.g. 5Gi, 20Gi)."
