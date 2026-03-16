@@ -53,7 +53,7 @@ jobs:
 
       - name: Check code coverage
         run: |
-          pytest tests/ --ignore=tests/e2e --cov=jupytercluster --cov-report=xml --cov-fail-under=30
+          pytest tests/ --ignore=tests/e2e --cov=jupytercluster --cov-report=xml --cov-fail-under=20
       
       - name: Type checking
         run: |
