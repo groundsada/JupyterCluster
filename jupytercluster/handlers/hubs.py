@@ -171,6 +171,15 @@ class HubDetailHandler(BaseHandler):
                     # Update hub values through spawner validation
                     spawner = hub.get_spawner()
                     sanitized_values = spawner._validate_helm_values(values)
+                    # Auto-enable ingress/httpRoute when hosts are configured
+                    _ingress = sanitized_values.get("ingress") or {}
+                    if isinstance(_ingress, dict) and _ingress.get("hosts"):
+                        _ingress["enabled"] = True
+                        sanitized_values["ingress"] = _ingress
+                    _http_route = sanitized_values.get("httpRoute") or {}
+                    if isinstance(_http_route, dict) and _http_route.get("hostnames"):
+                        _http_route["enabled"] = True
+                        sanitized_values["httpRoute"] = _http_route
                     hub.values = sanitized_values
                     hub._save_to_orm()
                     app.db.commit()

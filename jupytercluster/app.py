@@ -637,6 +637,18 @@ class JupyterCluster(Application):
         user_values = self.apply_schema_fixed_values(values or {})
         sanitized_values = temp_spawner._validate_helm_values(user_values)
 
+        # Auto-enable ingress/httpRoute when hosts are configured so the stored
+        # values always include enabled=true (spawner.start() does the same as a
+        # safety net, but we also want the persisted values to be correct).
+        _ingress = sanitized_values.get("ingress") or {}
+        if isinstance(_ingress, dict) and _ingress.get("hosts"):
+            _ingress["enabled"] = True
+            sanitized_values["ingress"] = _ingress
+        _http_route = sanitized_values.get("httpRoute") or {}
+        if isinstance(_http_route, dict) and _http_route.get("hostnames"):
+            _http_route["enabled"] = True
+            sanitized_values["httpRoute"] = _http_route
+
         # Create ORM object
         orm_hub = orm.Hub(
             name=name,
