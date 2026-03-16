@@ -31,8 +31,8 @@ config:
   # Do not delete namespaces when a hub is deleted
   allowNamespaceDeletion: false
 
-  # Global JupyterHub defaults applied to every hub deployment.
-  # Only contains values not already enforced by hubValuesSchema.fixed above.
+  # Global JupyterHub defaults applied to every hub deployment (users can override these).
+  # Values already enforced by hubValuesSchema.fixed are intentionally omitted here.
   defaultHubValues:
     prePuller:
       hook:
@@ -68,10 +68,16 @@ config:
   hubValuesSchema:
     allowAdvancedYaml: false
     fixed:
+      # ── JupyterHub authenticator (DummyAuthenticator: any password accepted) ──
+      hub.config.JupyterHub.authenticator_class: dummy
+      hub.config.DummyAuthenticator.password: ""
+
       # ── Hub database (NRP standard) ─────────────────────────────────────────
       hub.db.type: sqlite-pvc
       hub.db.pvc.storageClassName: rook-ceph-block
       hub.db.pvc.storage: 1Gi
+      hub.db.pvc.accessModes:
+        - ReadWriteOnce
       # Recreate strategy required for RWO PVCs (avoids two pods fighting over the volume)
       hub.deploymentStrategy.type: Recreate
       hub.networkPolicy.enabled: false
@@ -98,12 +104,71 @@ config:
       singleuser.cloudMetadata.blockWithIptables: false
       singleuser.networkPolicy.enabled: false
       singleuser.defaultUrl: "/lab"
+      singleuser.startTimeout: 600
+      singleuser.cmd: null
+
+      # ── Single-user node affinity (NRP: us-west region only) ────────────────
+      singleuser.extraNodeAffinity.required:
+        - matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+              - us-west
 
       # ── Single-user storage (NRP standard: dynamic RWO on rook-ceph-block) ──
       # capacity is intentionally NOT fixed — users set it in the Simple Editor
       singleuser.storage.type: dynamic
       singleuser.storage.homeMountPath: /home/jovyan
       singleuser.storage.dynamic.storageClass: rook-ceph-block
+      singleuser.storage.dynamic.pvcNameTemplate: "claim-{username}{servername}"
+      singleuser.storage.dynamic.volumeNameTemplate: "volume-{username}{servername}"
+      singleuser.storage.dynamic.storageAccessModes:
+        - ReadWriteOnce
+
+      # ── Profile list (NRP standard images) ──────────────────────────────────
+      # Users pick a profile when launching their server; image + resources come from the profile.
+      # cpu/memory defaults in the Simple Editor apply to profiles that don't override them.
+      singleuser.profileList:
+        - display_name: "Scipy (Python)"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/scipy-notebook:2024-04-22
+          default: true
+        - display_name: "R"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/r-notebook:2024-04-22
+        - display_name: "Julia"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/julia-notebook:2024-04-22
+        - display_name: "Datascience (Python + R + Julia)"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/datascience-notebook:2024-04-22
+        - display_name: "Tensorflow (CUDA)"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/tensorflow-notebook:cuda-2024-04-22
+        - display_name: "PyTorch (CUDA)"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/pytorch-notebook:cuda12-2024-04-22
+        - display_name: "PySpark"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/pyspark-notebook:2024-04-22
+        - display_name: "All Spark"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/all-spark-notebook:2024-04-22
+        - display_name: "B-Data Python/Scipy (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/python/scipy:3
+        - display_name: "B-Data Julia (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/julia/base:1
+        - display_name: "B-Data R (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/r/base:4
+        - display_name: "B-Data R tidyverse (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/r/tidyverse:4
+        - display_name: "B-Data R geospatial (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/r/geospatial:4
 
       # ── Culling (always on, not user-configurable) ──────────────────────────
       cull.enabled: true
@@ -128,6 +193,7 @@ config:
       ingress.pathSuffix: ""
       httpRoute.gateway.name: ingress
       httpRoute.gateway.namespace: haproxy
+
     groups:
       - title: Hub Access
         fields:
@@ -151,6 +217,10 @@ config:
             path: cull.timeout
             type: number
             immutable: true
+          - label: Start timeout (seconds)
+            path: singleuser.startTimeout
+            type: number
+            immutable: true
           - label: prePuller
             path: prePuller.hook.enabled
             type: boolean
@@ -160,37 +230,28 @@ config:
             type: boolean
             immutable: true
 
-      - title: Single-User Image
-        fields:
-          - label: Image Name
-            path: singleuser.image.name
-            type: text
-            placeholder: quay.io/jupyter/scipy-notebook
-          - label: Image Tag
-            path: singleuser.image.tag
-            type: text
-            placeholder: "latest"
-
       - title: Single-User Resources
         fields:
           - label: CPU Limit
             path: singleuser.cpu.limit
             type: number
-            step: 0.1
-            placeholder: "2"
+            step: 0.5
+            placeholder: "3"
+            help: "Max CPU cores per user (applies to profiles without their own override)."
           - label: CPU Guarantee
             path: singleuser.cpu.guarantee
             type: number
-            step: 0.1
-            placeholder: "0.5"
+            step: 0.5
+            placeholder: "1"
           - label: Memory Limit
             path: singleuser.memory.limit
             type: text
-            placeholder: 4G
+            placeholder: "10G"
+            help: "Max RAM per user (e.g. 4G, 16G)."
           - label: Memory Guarantee
             path: singleuser.memory.guarantee
             type: text
-            placeholder: 1G
+            placeholder: "4G"
 
       - title: Single-User Storage
         fields:
