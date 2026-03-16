@@ -113,7 +113,52 @@ config:
       cull.maxAge: 0
       cull.users: false
       cull.removeNamedServers: false
+
+      # ── prePuller and scheduling (for immutable display in GUI) ─────────────
+      prePuller.hook.enabled: false
+      prePuller.continuous.enabled: false
+      scheduling.userScheduler.enabled: false
+      scheduling.userPlaceholder.enabled: false
+
+      # ── Ingress/httpRoute (hostname is user-set, infrastructure is fixed) ───
+      ingress.enabled: true
+      ingress.ingressClassName: haproxy
+      ingress.pathSuffix: ""
+      httpRoute.enabled: true
+      httpRoute.gateway.name: ingress
+      httpRoute.gateway.namespace: haproxy
     groups:
+      - title: Hub Access
+        fields:
+          - label: Hub Hostname
+            path: ingress.hosts
+            mirrorPaths:
+              - httpRoute.hostnames
+              - ingress.tls.0.hosts
+            type: hostname
+            domain: ".nrp-nautilus.io"
+            placeholder: "my-hub"
+            help: "Your hub will be accessible at {value}.nrp-nautilus.io"
+
+      - title: Cluster Policies
+        fields:
+          - label: Culling enabled
+            path: cull.enabled
+            type: boolean
+            immutable: true
+          - label: Cull timeout (seconds)
+            path: cull.timeout
+            type: number
+            immutable: true
+          - label: prePuller
+            path: prePuller.hook.enabled
+            type: boolean
+            immutable: true
+          - label: User scheduler
+            path: scheduling.userScheduler.enabled
+            type: boolean
+            immutable: true
+
       - title: Single-User Image
         fields:
           - label: Image Name
@@ -124,6 +169,7 @@ config:
             path: singleuser.image.tag
             type: text
             placeholder: "latest"
+
       - title: Single-User Resources
         fields:
           - label: CPU Limit
@@ -144,10 +190,9 @@ config:
             path: singleuser.memory.guarantee
             type: text
             placeholder: 1G
+
       - title: Single-User Storage
         fields:
-          # Storage type and class are fixed to dynamic/rook-ceph-block by this cluster's policy.
-          # Only capacity is user-configurable.
           - label: Storage Size
             path: singleuser.storage.capacity
             type: text

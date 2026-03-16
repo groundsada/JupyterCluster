@@ -1,9 +1,22 @@
+<style>
+  .immutable-field .form-control:disabled,
+  .immutable-field .form-select:disabled {
+    background-color: #e9ecef;
+    opacity: 1;
+    cursor: not-allowed;
+    color: #495057;
+  }
+  .immutable-field .form-check-input:disabled { opacity: 0.7; cursor: not-allowed; }
+  .immutable-field .form-label { color: #6c757d; }
+  .immutable-field .input-group-text { background-color: #e9ecef; }
+</style>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 
-<!-- Schema injected by the server — admins can override via JUPYTERCLUSTER_HUB_VALUES_SCHEMA -->
+<!-- Schema injected by the server -->
 <script id="hub-values-schema" type="application/json">{% raw hub_values_schema_json %}</script>
 
-<!-- Hidden textarea that gets submitted with the form -->
+<!-- Hidden textarea submitted with the form -->
 <textarea id="values" name="values" style="display:none">{{ existing_values_yaml }}</textarea>
 
 <ul class="nav nav-tabs mb-3" id="helm-editor-tabs" role="tablist">
@@ -22,10 +35,7 @@
 </ul>
 
 <div class="tab-content">
-  <!-- Simple Editor: rendered dynamically from schema -->
   <div class="tab-pane fade show active" id="simple-editor-pane" role="tabpanel"></div>
-
-  <!-- Advanced: raw YAML (hidden when schema sets allowAdvancedYaml: false) -->
   <div class="tab-pane fade" id="advanced-editor-pane" role="tabpanel">
     <textarea class="form-control font-monospace" id="values-yaml-editor" rows="15"
               placeholder="hub: ..."></textarea>
@@ -37,23 +47,38 @@
 
 <script>
 (function () {
-  // ── Utilities ─────────────────────────────────────────────────────────────
+  // ── Utilities ────────────────────────────────────────────────────────────
 
   function getNestedValue(obj, path) {
-    return path.split('.').reduce((o, k) => (o != null ? o[k] : undefined), obj);
+    return path.split('.').reduce((o, k) => {
+      if (o == null) return undefined;
+      const key = /^\d+$/.test(k) ? parseInt(k) : k;
+      return o[key];
+    }, obj);
   }
 
   function setNestedValue(obj, path, value) {
     const parts = path.split('.');
     let cur = obj;
     for (let i = 0; i < parts.length - 1; i++) {
-      if (cur[parts[i]] == null || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
-      cur = cur[parts[i]];
+      const key = /^\d+$/.test(parts[i]) ? parseInt(parts[i]) : parts[i];
+      const nextIsIdx = /^\d+$/.test(parts[i + 1]);
+      if (cur[key] == null || typeof cur[key] !== 'object') cur[key] = nextIsIdx ? [] : {};
+      cur = cur[key];
     }
-    cur[parts[parts.length - 1]] = value;
+    const lastKey = /^\d+$/.test(parts[parts.length - 1])
+      ? parseInt(parts[parts.length - 1])
+      : parts[parts.length - 1];
+    cur[lastKey] = value;
   }
 
-  // ── Schema rendering ──────────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── Schema ────────────────────────────────────────────────────────────────
 
   const schema = JSON.parse(document.getElementById('hub-values-schema').textContent || '{}');
   const pane = document.getElementById('simple-editor-pane');
@@ -78,37 +103,76 @@
         col.className = 'col-md-6 mb-3';
         col.dataset.fieldPath = field.path;
 
+        const isImmutable = field.immutable === true;
+        if (isImmutable) col.classList.add('immutable-field');
+
         if (field.showWhen) {
           col.dataset.showWhen = JSON.stringify(field.showWhen);
           col.style.display = 'none';
         }
 
-        let inputHtml;
-        const inputId = 'field-' + field.path.replace(/\./g, '-');
+        const inputId = 'field-' + field.path.replace(/[\.\d]/g, c => c === '.' ? '-' : c);
+        const disAttr = isImmutable ? ' disabled' : '';
+        const lockIcon = isImmutable ? ' <span title="Locked by admin" style="font-size:0.8em">&#128274;</span>' : '';
 
-        if (field.type === 'select') {
+        let inputHtml;
+
+        if (field.type === 'hostname') {
+          const domain = field.domain || '';
+          const mirrorPaths = JSON.stringify(field.mirrorPaths || []);
+          inputHtml = `
+            <div class="input-group">
+              <input type="text" class="form-control" id="${inputId}"
+                     data-path="${escHtml(field.path)}"
+                     data-type="hostname"
+                     data-domain="${escHtml(domain)}"
+                     data-mirror-paths="${escHtml(mirrorPaths)}"
+                     placeholder="${escHtml(field.placeholder || '')}"${disAttr}>
+              <span class="input-group-text text-muted">${escHtml(domain)}</span>
+            </div>`;
+        } else if (field.type === 'select') {
           const opts = (field.options || []).map(o =>
             `<option value="${escHtml(o)}"${o === field.default ? ' selected' : ''}>${escHtml(o)}</option>`
           ).join('');
-          inputHtml = `<select class="form-select" id="${inputId}" data-path="${escHtml(field.path)}">${opts}</select>`;
+          inputHtml = `<select class="form-select" id="${inputId}"
+                               data-path="${escHtml(field.path)}"${disAttr}
+                               ${isImmutable ? 'data-immutable="true"' : ''}>${opts}</select>`;
         } else if (field.type === 'boolean') {
+          const defChecked = field.default ? 'checked' : '';
           inputHtml = `
-            <div class="form-check">
+            <div class="form-check mt-1">
               <input class="form-check-input" type="checkbox" id="${inputId}"
-                     data-path="${escHtml(field.path)}" ${field.default ? 'checked' : ''}>
+                     data-path="${escHtml(field.path)}"
+                     ${isImmutable ? 'data-immutable="true"' : ''}
+                     ${defChecked}${disAttr}>
               <label class="form-check-label" for="${inputId}">${escHtml(field.label)}</label>
             </div>`;
+          // For boolean, skip the outer label (it's inside the check div)
+          col.innerHTML = inputHtml +
+            (field.help ? `<small class="form-text text-muted">${escHtml(field.help)}</small>` : '');
+          if (isImmutable) {
+            // Put lock icon next to the check label
+            col.querySelector('.form-check-label').insertAdjacentHTML('beforeend', lockIcon);
+          }
+          row.appendChild(col);
+          return;
         } else {
           const t = field.type === 'number' ? 'number' : 'text';
           const step = field.step != null ? `step="${field.step}"` : '';
           const ph = field.placeholder ? `placeholder="${escHtml(field.placeholder)}"` : '';
           const val = field.default != null ? `value="${escHtml(String(field.default))}"` : '';
+          const extraAttrs = isImmutable ? 'data-immutable="true"' : '';
           inputHtml = `<input type="${t}" class="form-control" id="${inputId}"
-                              data-path="${escHtml(field.path)}" ${step} ${ph} ${val}>`;
+                              data-path="${escHtml(field.path)}" ${step} ${ph} ${val}
+                              ${extraAttrs}${disAttr}>`;
         }
 
+        const labelHtml = field.type !== 'boolean'
+          ? `<label class="form-label" for="${inputId}">${escHtml(field.label)}${lockIcon}</label>`
+          : '';
+
         col.innerHTML = `
-          <label class="form-label" for="${inputId}">${escHtml(field.label)}</label>
+          ${labelHtml}
           ${inputHtml}
           ${field.help ? `<small class="form-text text-muted">${escHtml(field.help)}</small>` : ''}
         `;
@@ -118,59 +182,83 @@
       pane.appendChild(row);
     });
 
-    // Wire up showWhen listeners after all fields are in the DOM
     setupConditionalFields();
   }
 
-  function escHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  // ── Conditional visibility ────────────────────────────────────────────────
+  // ── Conditional visibility ─────────────────────────────────────────────
 
   function setupConditionalFields() {
     document.querySelectorAll('[data-show-when]').forEach(col => {
       const cond = JSON.parse(col.dataset.showWhen);
       const trigger = document.querySelector(`[data-path="${cond.path}"]`);
       if (!trigger) return;
-      const update = () => {
-        col.style.display = (trigger.value === cond.value) ? '' : 'none';
-      };
+      const update = () => { col.style.display = (trigger.value === cond.value) ? '' : 'none'; };
       trigger.addEventListener('change', update);
       update();
     });
   }
 
-  // ── Build values object from form ─────────────────────────────────────────
+  // ── Populate immutable fields from schema.fixed ────────────────────────
+
+  function populateImmutableFields() {
+    if (!schema.fixed) return;
+    document.querySelectorAll('#simple-editor-pane [data-immutable="true"]').forEach(el => {
+      const fixedVal = schema.fixed[el.dataset.path];
+      if (fixedVal == null) return;
+      if (el.type === 'checkbox') el.checked = Boolean(fixedVal);
+      else el.value = String(fixedVal);
+    });
+  }
+
+  // ── Build values object from form ─────────────────────────────────────
 
   function buildValuesFromForm() {
     const values = {};
     document.querySelectorAll('#simple-editor-pane [data-path]').forEach(el => {
+      if (el.dataset.immutable === 'true') return; // server enforces these via fixed
+
       const path = el.dataset.path;
       let value;
-      if (el.type === 'checkbox') {
+
+      if (el.dataset.type === 'hostname') {
+        const domain = el.dataset.domain || '';
+        const subdomain = el.value.trim();
+        if (!subdomain) return;
+        const hostname = subdomain + domain;
+        value = [hostname];
+        try {
+          JSON.parse(el.dataset.mirrorPaths || '[]').forEach(mp => {
+            setNestedValue(values, mp, [hostname]);
+          });
+        } catch (e) {}
+      } else if (el.type === 'checkbox') {
         value = el.checked;
       } else if (el.type === 'number') {
         value = el.value.trim() !== '' ? parseFloat(el.value) : undefined;
       } else {
         value = el.value.trim() || undefined;
       }
-      if (value !== undefined && value !== '') {
-        setNestedValue(values, path, value);
-      }
+
+      if (value !== undefined) setNestedValue(values, path, value);
     });
     return values;
   }
 
-  // ── Populate form from values object ──────────────────────────────────────
+  // ── Populate form from values object ──────────────────────────────────
 
   function populateFormFromValues(values) {
     document.querySelectorAll('#simple-editor-pane [data-path]').forEach(el => {
+      if (el.dataset.immutable === 'true') return; // don't overwrite immutable display
+
       const v = getNestedValue(values, el.dataset.path);
       if (v == null) return;
-      if (el.type === 'checkbox') {
+
+      if (el.dataset.type === 'hostname') {
+        const arr = Array.isArray(v) ? v : [String(v)];
+        const domain = el.dataset.domain || '';
+        const full = arr[0] || '';
+        el.value = (domain && full.endsWith(domain)) ? full.slice(0, -domain.length) : full;
+      } else if (el.type === 'checkbox') {
         el.checked = Boolean(v);
       } else {
         el.value = v;
@@ -179,7 +267,7 @@
     });
   }
 
-  // ── Tab sync ──────────────────────────────────────────────────────────────
+  // ── Tab sync ─────────────────────────────────────────────────────────
 
   document.getElementById('advanced-tab').addEventListener('shown.bs.tab', function () {
     const values = buildValuesFromForm();
@@ -196,16 +284,14 @@
     }
   });
 
-  // ── Initialise ────────────────────────────────────────────────────────────
+  // ── Schema-level settings ─────────────────────────────────────────────
 
-  // ── Apply schema-level settings ───────────────────────────────────────────
-
-  // Hide Advanced YAML tab when schema disables it
   if (schema.allowAdvancedYaml === false) {
     document.getElementById('advanced-tab-li').style.display = 'none';
   }
 
-  // Apply fixed values on top of any built values object before submit
+  // ── Apply fixed values before submit ─────────────────────────────────
+
   function applyFixedValues(values) {
     if (!schema.fixed) return values;
     Object.entries(schema.fixed).forEach(([path, value]) => {
@@ -214,11 +300,9 @@
     return values;
   }
 
-  // ── Patch submit to apply fixed values ────────────────────────────────────
-  // (overrides the earlier submit listener — re-register after renderSchema)
-  const editorForm2 = document.getElementById('helm-editor-tabs').closest('form');
-  if (editorForm2) {
-    editorForm2.addEventListener('submit', function () {
+  const editorForm = document.getElementById('helm-editor-tabs').closest('form');
+  if (editorForm) {
+    editorForm.addEventListener('submit', function () {
       const activeTab = document.querySelector('#helm-editor-tabs .nav-link.active');
       let values;
       if (activeTab && activeTab.id === 'advanced-tab') {
@@ -233,9 +317,11 @@
     });
   }
 
-  renderSchema();
+  // ── Initialise ────────────────────────────────────────────────────────
 
-  // Populate from existing values on page load
+  renderSchema();
+  populateImmutableFields();
+
   const existingYaml = document.getElementById('values').value.trim();
   if (existingYaml) {
     try {
@@ -246,6 +332,8 @@
       console.warn('Could not parse existing values YAML:', e);
       document.getElementById('values-yaml-editor').value = existingYaml;
     }
+    // Re-populate immutable fields after existing values (fixed always wins in display)
+    populateImmutableFields();
   }
 })();
 </script>
