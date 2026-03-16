@@ -17,6 +17,21 @@ from traitlets.config import LoggingConfigurable
 logger = logging.getLogger(__name__)
 
 
+def _deep_merge(base: Dict, override: Dict) -> Dict:
+    """Recursively merge *override* into *base*, returning a new dict.
+
+    Dict values are merged recursively; all other types are replaced by the
+    override value.  Neither input is mutated.
+    """
+    result = dict(base)
+    for k, v in override.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
+
 class HubSpawner(LoggingConfigurable):
     """Spawns JupyterHub instances as Helm releases in Kubernetes namespaces"""
 
@@ -354,13 +369,14 @@ class HubSpawner(LoggingConfigurable):
                     "Could not parse JUPYTERCLUSTER_DEFAULT_HUB_VALUES — skipping global defaults"
                 )
 
-        # Apply per-hub default values on top of global defaults
-        merged_values.update(self.default_values)
+        # Apply per-hub default values on top of global defaults (deep merge preserves
+        # nested keys such as hub.resources that would be wiped by a shallow update)
+        merged_values = _deep_merge(merged_values, self.default_values)
 
         if values:
             # CRITICAL: Validate and sanitize user-provided values
             sanitized_values = self._validate_helm_values(values)
-            merged_values.update(sanitized_values)
+            merged_values = _deep_merge(merged_values, sanitized_values)
 
         # Apply schema-defined fixed values last so they always win (server-side enforcement)
         _schema_raw = _os.environ.get("JUPYTERCLUSTER_HUB_VALUES_SCHEMA")
