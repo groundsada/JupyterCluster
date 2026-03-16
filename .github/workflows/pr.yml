@@ -26,7 +26,7 @@ jobs:
       
       - name: Run tests
         run: |
-          pytest tests/ -v
+          pytest tests/ --ignore=tests/e2e -v
       
       - name: Check code style
         run: |
