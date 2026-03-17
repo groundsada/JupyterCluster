@@ -203,6 +203,10 @@ class HubDetailHandler(BaseHandler):
 
             # Handle actions
             if action == "start":
+                if hub.status == "pending":
+                    # Already starting — just redirect back so multiple clicks don't stack
+                    self.redirect(f"/hubs/{hub_name}")
+                    return
                 await hub.start()
                 app.db.commit()  # Commit after start to save error_message if any
             elif action == "stop":

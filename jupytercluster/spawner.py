@@ -140,10 +140,13 @@ class HubSpawner(LoggingConfigurable):
             self.log.error(f"Failed to initialize Kubernetes client: {e}")
             raise
 
-    def _check_storage_class_exists(self, storage_class: str) -> bool:
+    async def _check_storage_class_exists(self, storage_class: str) -> bool:
         """Check if a storage class exists in the cluster"""
         try:
-            storage_classes = self.storage_v1.list_storage_class()
+            loop = asyncio.get_event_loop()
+            storage_classes = await loop.run_in_executor(
+                None, self.storage_v1.list_storage_class
+            )
             for sc in storage_classes.items:
                 if sc.metadata.name == storage_class:
                     return True
@@ -152,7 +155,7 @@ class HubSpawner(LoggingConfigurable):
             self.log.warning(f"Failed to check storage class {storage_class}: {e}")
             return False
 
-    def _check_node_labels_exist(self, required_labels: Dict[str, any]) -> bool:
+    async def _check_node_labels_exist(self, required_labels: Dict[str, any]) -> bool:
         """Check if nodes have the required labels
 
         Args:
@@ -162,7 +165,8 @@ class HubSpawner(LoggingConfigurable):
             True if at least one node has all required labels
         """
         try:
-            nodes = self.core_v1.list_node()
+            loop = asyncio.get_event_loop()
+            nodes = await loop.run_in_executor(None, self.core_v1.list_node)
             for node in nodes.items:
                 node_labels = node.metadata.labels or {}
                 # Check if any node has all required labels
@@ -267,57 +271,9 @@ class HubSpawner(LoggingConfigurable):
                             self.log.warning("Converting empty extraVolumeMounts map to empty list")
                             storage["extraVolumeMounts"] = []
 
-                        # Validate and fix storage class
-                        if "dynamic" in storage and isinstance(storage["dynamic"], dict):
-                            storage_class = storage["dynamic"].get("storageClass")
-                            if storage_class and not self._check_storage_class_exists(
-                                storage_class
-                            ):
-                                self.log.warning(
-                                    f"Storage class '{storage_class}' not found, using 'standard' instead"
-                                )
-                                storage["dynamic"]["storageClass"] = "standard"
+                        # Storage class validation is done async in _deploy_helm_release
 
-                        # Also check db.pvc.storageClassName
-                        if "db" in sanitized and isinstance(sanitized["db"], dict):
-                            if "pvc" in sanitized["db"] and isinstance(
-                                sanitized["db"]["pvc"], dict
-                            ):
-                                db_storage_class = sanitized["db"]["pvc"].get("storageClassName")
-                                if db_storage_class and not self._check_storage_class_exists(
-                                    db_storage_class
-                                ):
-                                    self.log.warning(
-                                        f"DB storage class '{db_storage_class}' not found, using 'standard' instead"
-                                    )
-                                    sanitized["db"]["pvc"]["storageClassName"] = "standard"
-
-                # Validate and fix node affinity
-                if "extraNodeAffinity" in singleuser and isinstance(
-                    singleuser["extraNodeAffinity"], dict
-                ):
-                    required = singleuser["extraNodeAffinity"].get("required", [])
-                    if required:
-                        # Extract required labels from node affinity
-                        required_labels = {}
-                        for match_expressions in required:
-                            if (
-                                isinstance(match_expressions, dict)
-                                and "matchExpressions" in match_expressions
-                            ):
-                                for expr in match_expressions["matchExpressions"]:
-                                    if isinstance(expr, dict) and expr.get("operator") == "In":
-                                        key = expr.get("key")
-                                        values = expr.get("values", [])
-                                        if key and values:
-                                            required_labels[key] = values
-
-                        # Check if labels exist
-                        if required_labels and not self._check_node_labels_exist(required_labels):
-                            self.log.warning(
-                                f"Node labels {required_labels} not found on any node, removing node affinity"
-                            )
-                            singleuser["extraNodeAffinity"] = {}
+                # Node affinity label validation is done async in _deploy_helm_release
 
         return sanitized
 
@@ -425,17 +381,22 @@ class HubSpawner(LoggingConfigurable):
         Returns:
             None if running, exit code if stopped
         """
+        loop = asyncio.get_event_loop()
         try:
             # Check if namespace exists
             try:
-                ns = self.core_v1.read_namespace(name=self.namespace)
+                await loop.run_in_executor(
+                    None, lambda: self.core_v1.read_namespace(name=self.namespace)
+                )
             except ApiException as e:
                 if e.status == 404:
                     return 1  # Namespace doesn't exist, hub is stopped
                 raise
 
             # Check if Helm release exists by checking for hub pods
-            pods = self.core_v1.list_namespaced_pod(namespace=self.namespace)
+            pods = await loop.run_in_executor(
+                None, lambda: self.core_v1.list_namespaced_pod(namespace=self.namespace)
+            )
             hub_pods = [p for p in pods.items if "jupyterhub" in p.metadata.name.lower()]
 
             if not hub_pods:
@@ -456,11 +417,14 @@ class HubSpawner(LoggingConfigurable):
 
     async def _ensure_namespace(self):
         """Ensure the namespace exists and is properly labeled"""
+        loop = asyncio.get_event_loop()
         # Check if namespace creation is allowed
         if not self._get_allow_namespace_creation():
             # Just verify namespace exists, don't create it
             try:
-                ns = self.core_v1.read_namespace(name=self.namespace)
+                await loop.run_in_executor(
+                    None, lambda: self.core_v1.read_namespace(name=self.namespace)
+                )
                 self.log.info(f"Namespace {self.namespace} exists (namespace creation disabled)")
                 return
             except ApiException as e:
@@ -473,7 +437,9 @@ class HubSpawner(LoggingConfigurable):
 
         # Namespace creation is allowed - proceed with creation logic
         try:
-            ns = self.core_v1.read_namespace(name=self.namespace)
+            ns = await loop.run_in_executor(
+                None, lambda: self.core_v1.read_namespace(name=self.namespace)
+            )
             # Update labels to ensure ownership
             ns.metadata.labels.update(
                 {
@@ -482,11 +448,12 @@ class HubSpawner(LoggingConfigurable):
                     "jupytercluster.io/owner": self.owner,
                 }
             )
-            self.core_v1.patch_namespace(name=self.namespace, body=ns)
+            await loop.run_in_executor(
+                None, lambda: self.core_v1.patch_namespace(name=self.namespace, body=ns)
+            )
             self.log.debug(f"Namespace {self.namespace} already exists, updated labels")
         except ApiException as e:
             if e.status == 404:
-                # Create namespace with proper labels and ownership
                 namespace_body = client.V1Namespace(
                     metadata=client.V1ObjectMeta(
                         name=self.namespace,
@@ -497,7 +464,9 @@ class HubSpawner(LoggingConfigurable):
                         },
                     ),
                 )
-                self.core_v1.create_namespace(body=namespace_body)
+                await loop.run_in_executor(
+                    None, lambda: self.core_v1.create_namespace(body=namespace_body)
+                )
                 self.log.info(f"Created namespace {self.namespace} for owner {self.owner}")
             else:
                 raise
@@ -550,7 +519,7 @@ class HubSpawner(LoggingConfigurable):
                 # Final check: Validate storage class exists
                 if "dynamic" in storage and isinstance(storage["dynamic"], dict):
                     storage_class = storage["dynamic"].get("storageClass")
-                    if storage_class and not self._check_storage_class_exists(storage_class):
+                    if storage_class and not await self._check_storage_class_exists(storage_class):
                         self.log.warning(
                             f"Storage class '{storage_class}' not found in final check, using 'standard'"
                         )
@@ -560,7 +529,7 @@ class HubSpawner(LoggingConfigurable):
         if "db" in values and isinstance(values["db"], dict):
             if "pvc" in values["db"] and isinstance(values["db"]["pvc"], dict):
                 db_storage_class = values["db"]["pvc"].get("storageClassName")
-                if db_storage_class and not self._check_storage_class_exists(db_storage_class):
+                if db_storage_class and not await self._check_storage_class_exists(db_storage_class):
                     self.log.warning(
                         f"DB storage class '{db_storage_class}' not found in final check, using 'standard'"
                     )
@@ -586,7 +555,7 @@ class HubSpawner(LoggingConfigurable):
                                     if key and values_list:
                                         required_labels[key] = values_list
 
-                    if required_labels and not self._check_node_labels_exist(required_labels):
+                    if required_labels and not await self._check_node_labels_exist(required_labels):
                         self.log.warning(
                             f"Node labels {required_labels} not found in final check, removing node affinity"
                         )
@@ -708,15 +677,20 @@ class HubSpawner(LoggingConfigurable):
         Only called when ``allowNamespaceDeletion`` is enabled in config.
         The namespace must be managed by JupyterCluster (has the managed label).
         """
+        loop = asyncio.get_event_loop()
         try:
-            ns = self.core_v1.read_namespace(name=namespace)
+            ns = await loop.run_in_executor(
+                None, lambda: self.core_v1.read_namespace(name=namespace)
+            )
             labels = ns.metadata.labels or {}
             if labels.get("jupytercluster.io/managed") != "true":
                 self.log.warning(
                     f"Namespace {namespace} is not managed by JupyterCluster — skipping deletion"
                 )
                 return
-            self.core_v1.delete_namespace(name=namespace)
+            await loop.run_in_executor(
+                None, lambda: self.core_v1.delete_namespace(name=namespace)
+            )
             self.log.info(f"Deleted namespace {namespace}")
         except ApiException as e:
             if e.status == 404:
@@ -803,8 +777,11 @@ class HubSpawner(LoggingConfigurable):
 
         while elapsed < max_wait:
             try:
+                loop = asyncio.get_event_loop()
                 # Check for proxy service
-                services = self.core_v1.list_namespaced_service(namespace=self.namespace)
+                services = await loop.run_in_executor(
+                    None, lambda: self.core_v1.list_namespaced_service(namespace=self.namespace)
+                )
                 proxy_service = None
                 for svc in services.items:
                     if "proxy" in svc.metadata.name.lower() or "hub" in svc.metadata.name.lower():
@@ -818,7 +795,10 @@ class HubSpawner(LoggingConfigurable):
                         from kubernetes.client import NetworkingV1Api
 
                         net_v1 = NetworkingV1Api()
-                        ingresses = net_v1.list_namespaced_ingress(namespace=self.namespace)
+                        loop2 = asyncio.get_event_loop()
+                        ingresses = await loop2.run_in_executor(
+                            None, lambda: net_v1.list_namespaced_ingress(namespace=self.namespace)
+                        )
                         if ingresses.items:
                             ingress = ingresses.items[0]
                             if ingress.spec.rules:

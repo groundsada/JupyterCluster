@@ -1,5 +1,10 @@
 {% extends "page.html" %}
 {% block title %}{{ hub.name }} - JupyterCluster{% end %}
+{% block head %}
+{% if hub.status == 'pending' %}
+<meta http-equiv="refresh" content="5">
+{% end %}
+{% end %}
 {% block main %}
   <div class="container">
     <div class="row">
@@ -41,14 +46,20 @@
 
               <dt class="col-sm-3">Status:</dt>
               <dd class="col-sm-9">
-                <span class="badge 
+                <span class="badge
                   {% if hub.status == 'running' %}bg-success
-                  {% elif hub.status == 'pending' %}bg-warning
+                  {% elif hub.status == 'pending' %}bg-warning text-dark
                   {% elif hub.status == 'error' %}bg-danger
                   {% else %}bg-secondary
                   {% end %}">
+                  {% if hub.status == 'pending' %}
+                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                  {% end %}
                   {{ hub.status }}
                 </span>
+                {% if hub.status == 'pending' %}
+                  <small class="text-muted ms-2">Deploying… page refreshes automatically.</small>
+                {% end %}
                 {% if hub.status == 'error' %}
                   <button type="button" class="btn btn-sm btn-outline-danger ms-2" data-bs-toggle="modal" data-bs-target="#errorModal">
                     <i class="fa fa-exclamation-triangle"></i> View Error
