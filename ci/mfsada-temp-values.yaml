@@ -3,6 +3,14 @@ image:
   tag: develop
   pullPolicy: Always
 
+resources:
+  limits:
+    cpu: "2"
+    memory: 2Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
 ingress:
   enabled: true
   className: haproxy

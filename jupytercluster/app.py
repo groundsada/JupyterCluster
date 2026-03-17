@@ -698,9 +698,13 @@ class JupyterCluster(Application):
 
         namespace = hub.namespace
 
-        # Stop hub if running (uninstalls Helm release)
-        if hub.status == "running":
-            await hub.stop()
+        # Always uninstall the Helm release regardless of stored status
+        # (_delete_helm_release silently ignores "release not found" errors)
+        try:
+            spawner = hub.get_spawner()
+            await spawner._delete_helm_release()
+        except Exception as e:
+            logger.warning(f"Helm uninstall for {name} failed (continuing): {e}")
 
         # Optionally delete the Kubernetes namespace
         if self.allow_namespace_deletion:

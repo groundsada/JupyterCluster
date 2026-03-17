@@ -1,5 +1,6 @@
 """Hub management handlers for web UI"""
 
+import asyncio
 import logging
 
 from tornado import web
@@ -8,6 +9,19 @@ from ..utils import format_config, parse_config
 from .base import BaseHandler, DictObject
 
 logger = logging.getLogger(__name__)
+
+
+async def _start_hub_bg(app, hub):
+    """Fire-and-forget coroutine: start a hub and persist the result."""
+    try:
+        await hub.start()
+        app.db.commit()
+    except Exception as e:
+        logger.error("Background start failed for hub %s: %s", hub.name, e)
+        try:
+            app.db.commit()  # commit any error_message written by start()
+        except Exception:
+            pass
 
 
 class HubCreateHandler(BaseHandler):
@@ -81,7 +95,7 @@ class HubCreateHandler(BaseHandler):
             return
 
         try:
-            # Create hub
+            # Create hub record (status starts as "pending")
             hub = await app.create_hub(
                 name=hub_name,
                 owner=user,
@@ -89,7 +103,9 @@ class HubCreateHandler(BaseHandler):
                 description=description,
             )
 
-            # Redirect to hub page
+            # Start deploying in the background; redirect immediately so the
+            # browser reaches the hub detail page (which auto-refreshes every 5s)
+            asyncio.create_task(_start_hub_bg(app, hub))
             self.redirect(f"/hubs/{hub_name}")
         except Exception as e:
             logger.error(f"Failed to create hub {hub_name}: {e}")
@@ -207,8 +223,14 @@ class HubDetailHandler(BaseHandler):
                     # Already starting — just redirect back so multiple clicks don't stack
                     self.redirect(f"/hubs/{hub_name}")
                     return
-                await hub.start()
-                app.db.commit()  # Commit after start to save error_message if any
+                # Mark as pending immediately so the detail page shows the spinner
+                hub.status = "pending"
+                hub._save_to_orm()
+                app.db.commit()
+                # Deploy in background; browser auto-refreshes every 5 s
+                asyncio.create_task(_start_hub_bg(app, hub))
+                self.redirect(f"/hubs/{hub_name}")
+                return
             elif action == "stop":
                 await hub.stop()
                 app.db.commit()  # Commit after stop to save error_message if any
