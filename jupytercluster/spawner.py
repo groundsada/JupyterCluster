@@ -144,9 +144,7 @@ class HubSpawner(LoggingConfigurable):
         """Check if a storage class exists in the cluster"""
         try:
             loop = asyncio.get_event_loop()
-            storage_classes = await loop.run_in_executor(
-                None, self.storage_v1.list_storage_class
-            )
+            storage_classes = await loop.run_in_executor(None, self.storage_v1.list_storage_class)
             for sc in storage_classes.items:
                 if sc.metadata.name == storage_class:
                     return True
@@ -529,7 +527,9 @@ class HubSpawner(LoggingConfigurable):
         if "db" in values and isinstance(values["db"], dict):
             if "pvc" in values["db"] and isinstance(values["db"]["pvc"], dict):
                 db_storage_class = values["db"]["pvc"].get("storageClassName")
-                if db_storage_class and not await self._check_storage_class_exists(db_storage_class):
+                if db_storage_class and not await self._check_storage_class_exists(
+                    db_storage_class
+                ):
                     self.log.warning(
                         f"DB storage class '{db_storage_class}' not found in final check, using 'standard'"
                     )
@@ -688,9 +688,7 @@ class HubSpawner(LoggingConfigurable):
                     f"Namespace {namespace} is not managed by JupyterCluster — skipping deletion"
                 )
                 return
-            await loop.run_in_executor(
-                None, lambda: self.core_v1.delete_namespace(name=namespace)
-            )
+            await loop.run_in_executor(None, lambda: self.core_v1.delete_namespace(name=namespace))
             self.log.info(f"Deleted namespace {namespace}")
         except ApiException as e:
             if e.status == 404:
