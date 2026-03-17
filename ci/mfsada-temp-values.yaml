@@ -113,7 +113,13 @@ config:
       singleuser.networkPolicy.enabled: false
       singleuser.defaultUrl: "/lab"
       singleuser.startTimeout: 600
-      singleuser.cmd: null
+      # Do NOT set singleuser.cmd: null — b-data images use their own entrypoint
+      # which is not jupyterhub-singleuser and causes an instant container crash.
+      # KubeSpawner's default (jupyterhub-singleuser) is used when cmd is unset.
+
+      # Give single-user servers up to 5 min to respond to HTTP after pod is running
+      # (needed for large images like the b-data CUDA variants that take time to init)
+      hub.config.Spawner.http_timeout: 300
 
       # ── Single-user node affinity (NRP: us-west region only) ────────────────
       singleuser.extraNodeAffinity.required:
