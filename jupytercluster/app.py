@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 from tornado import web
@@ -673,6 +674,13 @@ class JupyterCluster(Application):
         hub = HubInstance(orm_hub)
         self.hubs[name] = hub
 
+        # Write creation event
+        hub._log_event("created", f"Hub created by {owner} in namespace {namespace}")
+        try:
+            self.db.commit()
+        except Exception:
+            pass
+
         logger.info(f"Created hub {name} for owner {owner}")
         return hub
 
@@ -714,6 +722,13 @@ class JupyterCluster(Application):
                 logger.info(f"Deleted namespace {namespace} for hub {name}")
             except Exception as e:
                 logger.warning(f"Failed to delete namespace {namespace}: {e}")
+
+        # Write deletion event before removing from DB
+        hub._log_event("deleted", f"Hub deleted by {caller or 'system'}")
+        try:
+            self.db.commit()
+        except Exception:
+            pass
 
         # Delete from database
         self.db.delete(hub.orm_hub)
@@ -758,25 +773,38 @@ class JupyterCluster(Application):
 
         logger.info("Startup reconciliation: checking %d hub(s)…", len(active))
 
+        grace = timedelta(minutes=5)
+
         async def _check(hub):
             try:
                 spawner = hub.get_spawner()
                 result = await spawner.poll()
                 if result is None:
-                    # poll() returns None → still running
+                    # poll() returns None → pods active (running or pending)
                     if hub.status != "running":
                         logger.info(
-                            "Reconcile %s: status '%s' → 'running' (actually running)",
+                            "Reconcile %s: status '%s' → 'running' (pods active)",
                             hub.name,
                             hub.status,
                         )
                         hub.status = "running"
                         hub._save_to_orm()
                 else:
-                    # poll() returned an exit code → not running
+                    # poll() returned an exit code → no pods found
+                    if hub.status == "pending":
+                        # Give recently-created hubs a grace period: Helm may not
+                        # have created pods yet when JC restarted mid-deploy.
+                        age = datetime.utcnow() - (hub.created or datetime.utcnow())
+                        if age < grace:
+                            logger.info(
+                                "Reconcile %s: still pending and only %s old — keeping pending",
+                                hub.name,
+                                age,
+                            )
+                            return
                     if hub.status not in ("stopped", "error"):
                         logger.warning(
-                            "Reconcile %s: status '%s' → 'stopped' (not running, exit=%s)",
+                            "Reconcile %s: status '%s' → 'stopped' (no pods, exit=%s)",
                             hub.name,
                             hub.status,
                             result,

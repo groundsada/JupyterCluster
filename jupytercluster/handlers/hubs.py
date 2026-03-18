@@ -152,10 +152,24 @@ class HubDetailHandler(BaseHandler):
         if "status" in hub_dict:
             hub_dict["status"] = str(hub_dict["status"])
 
+        # Fetch recent events for the event log panel
+        from .. import orm
+
+        events = (
+            self.jupytercluster.db.query(orm.HubEvent)
+            .filter_by(hub_id=hub.orm_hub.id)
+            .order_by(orm.HubEvent.timestamp.desc())
+            .limit(20)
+            .all()
+        )
+
         # Convert dict to object for template compatibility (Tornado templates use attribute access)
         hub_obj = DictObject(hub_dict)
         self.render_template(
-            "hub_detail.html", hub=hub_obj, existing_values_yaml=hub_dict["values_yaml"]
+            "hub_detail.html",
+            hub=hub_obj,
+            existing_values_yaml=hub_dict["values_yaml"],
+            events=events,
         )
 
     async def post(self, hub_name: str):
@@ -208,6 +222,7 @@ class HubDetailHandler(BaseHandler):
                         hub=hub_obj,
                         existing_values_yaml=hub_dict["values_yaml"],
                         error=f"Invalid YAML or JSON in values: {str(e)}",
+                        events=[],
                     )
                     return
 
@@ -270,6 +285,7 @@ class HubDetailHandler(BaseHandler):
                     hub=hub_obj,
                     existing_values_yaml=hub_dict["values_yaml"],
                     error=f"Failed to {action} hub: {str(e)}",
+                    events=[],
                 )
             else:
                 raise

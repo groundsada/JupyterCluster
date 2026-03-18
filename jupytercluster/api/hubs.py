@@ -1,5 +1,6 @@
 """API handlers for hub management"""
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -72,6 +73,7 @@ class HubAPIHandler(APIHandler):
         values_input = body.get("values")
         description = body.get("description", "")
         namespace = body.get("namespace")
+        auto_start = bool(body.get("start", False))
 
         if isinstance(values_input, str):
             try:
@@ -89,6 +91,10 @@ class HubAPIHandler(APIHandler):
                 description=description,
                 namespace=namespace,
             )
+            if auto_start:
+                from ..handlers.hubs import _start_hub_bg
+
+                asyncio.create_task(_start_hub_bg(self.app, hub))
             self.set_status(201)
             self.write(hub.to_dict())
         except ValueError as e:
@@ -160,10 +166,19 @@ class HubActionAPIHandler(APIHandler):
 
         try:
             if action == "start":
-                await hub.start()
-                self.write({"status": "started", "hub": hub.to_dict()})
+                if hub.status == "pending":
+                    self.write({"status": "pending", "hub": hub.to_dict()})
+                    return
+                hub.status = "pending"
+                hub._save_to_orm()
+                self.app.db.commit()
+                from ..handlers.hubs import _start_hub_bg
+
+                asyncio.create_task(_start_hub_bg(self.app, hub))
+                self.write({"status": "pending", "hub": hub.to_dict()})
             elif action == "stop":
                 await hub.stop()
+                self.app.db.commit()
                 self.write({"status": "stopped", "hub": hub.to_dict()})
             else:
                 raise web.HTTPError(400, f"Unknown action: {action!r}")

@@ -105,6 +105,7 @@ class TestTemplates:
                 logout_url="/logout",
                 hubs=[],
                 all_hubs=[],
+                hub_stats={"running": 0, "pending": 0, "stopped": 0, "error": 0},
                 static_url=static_url,
                 announcement=None,
             )
@@ -232,6 +233,7 @@ class TestTemplates:
                 xsrf="test-xsrf-token",
                 existing_values_yaml="",
                 hub_values_schema_json="{}",
+                events=[],
             )
             assert html is not None
         except ParseError as e:

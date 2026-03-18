@@ -140,6 +140,38 @@
             </form>
           </div>
         </div>
+        {% if events %}
+        <div class="card mt-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Event Log</h5>
+            <small class="text-muted">last {{ len(events) }} events</small>
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+              <tbody>
+                {% for ev in events %}
+                  <tr>
+                    <td class="ps-3" style="width:1%">
+                      <span class="badge
+                        {% if ev.event_type == 'started' or ev.event_type == 'created' %}bg-success
+                        {% elif ev.event_type == 'stopped' or ev.event_type == 'deleted' %}bg-secondary
+                        {% elif ev.event_type == 'error' %}bg-danger
+                        {% else %}bg-info
+                        {% end %}">
+                        {{ ev.event_type }}
+                      </span>
+                    </td>
+                    <td class="text-muted small" style="width:1%; white-space:nowrap">
+                      {{ ev.timestamp.strftime('%Y-%m-%d %H:%M:%S') if ev.timestamp else '' }}
+                    </td>
+                    <td class="small">{{ ev.message }}</td>
+                  </tr>
+                {% end %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% end %}
       </div>
     </div>
   </div>
