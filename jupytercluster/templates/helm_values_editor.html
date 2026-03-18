@@ -223,8 +223,7 @@
       if (!helpId) return;
       const span = document.getElementById(helpId);
       if (!span) return;
-      const domain = el.dataset.domain || '';
-      const update = () => { span.textContent = (el.value.trim() || '…') + domain; };
+      const update = () => { span.textContent = el.value.trim() || '…'; };
       el.addEventListener('input', update);
       update();
     });
