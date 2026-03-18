@@ -831,7 +831,9 @@ class JupyterCluster(Application):
         Any hub that fails its poll is marked 'stopped'; the original error is
         logged but does not abort other polls (return_exceptions=True).
         """
-        candidates = [h for h in self.hubs.values() if h.status in ("running", "pending")]
+        # Skip "pending" hubs — they are mid-deploy (background task running).
+        # Polling them races against hub.start() and can falsely mark them stopped.
+        candidates = [h for h in self.hubs.values() if h.status == "running"]
         if not candidates:
             return
 

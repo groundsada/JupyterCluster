@@ -400,14 +400,14 @@ class HubSpawner(LoggingConfigurable):
             if not hub_pods:
                 return 1  # No hub pods, consider it stopped
 
-            # Check if any pod is running
-            running = any(
-                p.status.phase == "Running"
+            # Pods in Running OR Pending/ContainerCreating mean the release is
+            # deployed and coming up — not stopped.
+            active = any(
+                p.status.phase in ("Running", "Pending")
                 for p in hub_pods
-                if p.status.phase in ["Running", "Pending"]
             )
 
-            return None if running else 1
+            return None if active else 1
 
         except Exception as e:
             self.log.error(f"Error polling hub {self.hub_name}: {e}")
