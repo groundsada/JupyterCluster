@@ -402,10 +402,7 @@ class HubSpawner(LoggingConfigurable):
 
             # Pods in Running OR Pending/ContainerCreating mean the release is
             # deployed and coming up — not stopped.
-            active = any(
-                p.status.phase in ("Running", "Pending")
-                for p in hub_pods
-            )
+            active = any(p.status.phase in ("Running", "Pending") for p in hub_pods)
 
             return None if active else 1
 

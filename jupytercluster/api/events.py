@@ -95,4 +95,5 @@ class HubEventsAPIHandler(APIHandler):
             ],
         }
         response.update(pagination_envelope(total, limit, offset))
+        self.set_header("Content-Type", "application/json")
         self.write(response)

@@ -236,7 +236,7 @@ class HubDetailHandler(BaseHandler):
             if action == "start":
                 if hub.status == "pending":
                     # Already starting — just redirect back so multiple clicks don't stack
-                    self.redirect(f"/hubs/{hub_name}")
+                    self.redirect(f"/hubs/{hub.name}")
                     return
                 # Mark as pending immediately so the detail page shows the spinner
                 hub.status = "pending"
@@ -244,7 +244,7 @@ class HubDetailHandler(BaseHandler):
                 app.db.commit()
                 # Deploy in background; browser auto-refreshes every 5 s
                 asyncio.create_task(_start_hub_bg(app, hub))
-                self.redirect(f"/hubs/{hub_name}")
+                self.redirect(f"/hubs/{hub.name}")
                 return
             elif action == "stop":
                 await hub.stop()

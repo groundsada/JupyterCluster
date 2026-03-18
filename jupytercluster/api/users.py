@@ -108,6 +108,7 @@ class UserAPIHandler(APIHandler):
             if "can_delete_namespaces" in body:
                 user.can_delete_namespaces = body["can_delete_namespaces"]
             self.app.db.commit()
+            self.set_header("Content-Type", "application/json")
             self.write(_user_dict(user))
         except Exception as e:
             logger.error("Failed to update user %s: %s", username, e)
