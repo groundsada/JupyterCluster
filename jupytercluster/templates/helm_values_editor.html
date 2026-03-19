@@ -570,7 +570,14 @@
         value = el.value.trim() !== '' ? parseFloat(el.value) : undefined;
       } else {
         // covers type=hidden (picker outputs) and type=text
-        value = el.value.trim() || undefined;
+        const raw = el.value.trim();
+        if (!raw) { value = undefined; }
+        else {
+          // Coerce purely numeric strings to JS numbers so Helm schema
+          // validators receive the correct type (e.g. cpu.limit: 2 not "2").
+          const num = parseFloat(raw);
+          value = (!isNaN(num) && String(num) === raw) ? num : raw;
+        }
       }
 
       if (value !== undefined) setNestedValue(values, path, value);
