@@ -1,5 +1,6 @@
 """Hub management handlers for web UI"""
 
+import asyncio
 import logging
 
 from tornado import web
@@ -8,6 +9,19 @@ from ..utils import format_config, parse_config
 from .base import BaseHandler, DictObject
 
 logger = logging.getLogger(__name__)
+
+
+async def _start_hub_bg(app, hub):
+    """Fire-and-forget coroutine: start a hub and persist the result."""
+    try:
+        await hub.start()
+        app.db.commit()
+    except Exception as e:
+        logger.error("Background start failed for hub %s: %s", hub.name, e)
+        try:
+            app.db.commit()  # commit any error_message written by start()
+        except Exception:
+            pass
 
 
 class HubCreateHandler(BaseHandler):
@@ -38,6 +52,7 @@ class HubCreateHandler(BaseHandler):
             allowed_namespaces=allowed_namespaces,
             max_hubs=max_hubs,
             current_hub_count=current_hub_count,
+            existing_values_yaml="",
         )
 
     async def post(self):
@@ -51,14 +66,20 @@ class HubCreateHandler(BaseHandler):
         values_str = self.get_argument("values", "")
 
         if not hub_name:
-            self.render_template("hub_create.html", error="Hub name is required")
+            self.render_template(
+                "hub_create.html",
+                error="Hub name is required",
+                existing_values_yaml=values_str,
+            )
             return
 
         try:
             values = parse_config(values_str) if values_str else {}
         except ValueError as e:
             self.render_template(
-                "hub_create.html", error=f"Invalid YAML or JSON in values field: {str(e)}"
+                "hub_create.html",
+                error=f"Invalid YAML or JSON in values field: {str(e)}",
+                existing_values_yaml=values_str,
             )
             return
 
@@ -66,11 +87,15 @@ class HubCreateHandler(BaseHandler):
 
         # Check if hub already exists
         if hub_name in app.hubs:
-            self.render_template("hub_create.html", error=f"Hub {hub_name} already exists")
+            self.render_template(
+                "hub_create.html",
+                error=f"Hub {hub_name} already exists",
+                existing_values_yaml=values_str,
+            )
             return
 
         try:
-            # Create hub
+            # Create hub record (status starts as "pending")
             hub = await app.create_hub(
                 name=hub_name,
                 owner=user,
@@ -78,11 +103,17 @@ class HubCreateHandler(BaseHandler):
                 description=description,
             )
 
-            # Redirect to hub page
+            # Start deploying in the background; redirect immediately so the
+            # browser reaches the hub detail page (which auto-refreshes every 5s)
+            asyncio.create_task(_start_hub_bg(app, hub))
             self.redirect(f"/hubs/{hub_name}")
         except Exception as e:
             logger.error(f"Failed to create hub {hub_name}: {e}")
-            self.render_template("hub_create.html", error=f"Failed to create hub: {str(e)}")
+            self.render_template(
+                "hub_create.html",
+                error=f"Failed to create hub: {str(e)}",
+                existing_values_yaml=values_str,
+            )
 
 
 class HubDetailHandler(BaseHandler):
@@ -121,9 +152,25 @@ class HubDetailHandler(BaseHandler):
         if "status" in hub_dict:
             hub_dict["status"] = str(hub_dict["status"])
 
+        # Fetch recent events for the event log panel
+        from .. import orm
+
+        events = (
+            self.jupytercluster.db.query(orm.HubEvent)
+            .filter_by(hub_id=hub.orm_hub.id)
+            .order_by(orm.HubEvent.timestamp.desc())
+            .limit(20)
+            .all()
+        )
+
         # Convert dict to object for template compatibility (Tornado templates use attribute access)
         hub_obj = DictObject(hub_dict)
-        self.render_template("hub_detail.html", hub=hub_obj)
+        self.render_template(
+            "hub_detail.html",
+            hub=hub_obj,
+            existing_values_yaml=hub_dict["values_yaml"],
+            events=events,
+        )
 
     async def post(self, hub_name: str):
         """Handle hub actions (start, stop, delete)"""
@@ -154,6 +201,15 @@ class HubDetailHandler(BaseHandler):
                     # Update hub values through spawner validation
                     spawner = hub.get_spawner()
                     sanitized_values = spawner._validate_helm_values(values)
+                    # Auto-enable ingress/httpRoute when hosts are configured
+                    _ingress = sanitized_values.get("ingress") or {}
+                    if isinstance(_ingress, dict) and _ingress.get("hosts"):
+                        _ingress["enabled"] = True
+                        sanitized_values["ingress"] = _ingress
+                    _http_route = sanitized_values.get("httpRoute") or {}
+                    if isinstance(_http_route, dict) and _http_route.get("hostnames"):
+                        _http_route["enabled"] = True
+                        sanitized_values["httpRoute"] = _http_route
                     hub.values = sanitized_values
                     hub._save_to_orm()
                     app.db.commit()
@@ -164,7 +220,9 @@ class HubDetailHandler(BaseHandler):
                     self.render_template(
                         "hub_detail.html",
                         hub=hub_obj,
+                        existing_values_yaml=hub_dict["values_yaml"],
                         error=f"Invalid YAML or JSON in values: {str(e)}",
+                        events=[],
                     )
                     return
 
@@ -176,13 +234,23 @@ class HubDetailHandler(BaseHandler):
 
             # Handle actions
             if action == "start":
-                await hub.start()
-                app.db.commit()  # Commit after start to save error_message if any
+                if hub.status == "pending":
+                    # Already starting — just redirect back so multiple clicks don't stack
+                    self.redirect(f"/hubs/{hub.name}")
+                    return
+                # Mark as pending immediately so the detail page shows the spinner
+                hub.status = "pending"
+                hub._save_to_orm()
+                app.db.commit()
+                # Deploy in background; browser auto-refreshes every 5 s
+                asyncio.create_task(_start_hub_bg(app, hub))
+                self.redirect(f"/hubs/{hub.name}")
+                return
             elif action == "stop":
                 await hub.stop()
                 app.db.commit()  # Commit after stop to save error_message if any
             elif action == "delete":
-                await app.delete_hub(hub_name)
+                await app.delete_hub(hub_name, caller=user)
                 self.redirect("/")
                 return
             elif action:
@@ -213,7 +281,11 @@ class HubDetailHandler(BaseHandler):
                     )
                 hub_obj = DictObject(hub_dict)
                 self.render_template(
-                    "hub_detail.html", hub=hub_obj, error=f"Failed to {action} hub: {str(e)}"
+                    "hub_detail.html",
+                    hub=hub_obj,
+                    existing_values_yaml=hub_dict["values_yaml"],
+                    error=f"Failed to {action} hub: {str(e)}",
+                    events=[],
                 )
             else:
                 raise

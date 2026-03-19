@@ -99,10 +99,12 @@ class HubInstance(LoggingConfigurable):
         if values:
             merged_values.update(values)
 
-        # CRITICAL: Validate and sanitize values before using them
-        # This ensures httpRoute is disabled, extraVolumes/extraVolumeMounts are fixed, etc.
         spawner = self.get_spawner()
-        merged_values = spawner._validate_helm_values(merged_values)
+
+        # Clear any previous error before attempting to start
+        self.error_message = ""
+        if hasattr(self.orm_hub, "error_message"):
+            self.orm_hub.error_message = ""
 
         # Update status
         self.status = "pending"
@@ -116,6 +118,7 @@ class HubInstance(LoggingConfigurable):
             self.url = url
             self.last_activity = datetime.utcnow()
             self._save_to_orm()
+            self._log_event("started", f"Hub started successfully at {url}")
 
             self.log.info(f"Hub {self.name} started successfully at {url}")
         except Exception as e:
@@ -141,7 +144,9 @@ class HubInstance(LoggingConfigurable):
             await spawner.stop()
 
             self.status = "stopped"
+            self.last_activity = datetime.utcnow()
             self._save_to_orm()
+            self._log_event("stopped", "Hub stopped successfully")
 
             self.log.info(f"Hub {self.name} stopped successfully")
         except Exception as e:
@@ -175,6 +180,20 @@ class HubInstance(LoggingConfigurable):
         if hasattr(self, "error_message"):
             if hasattr(self.orm_hub, "error_message"):
                 self.orm_hub.error_message = self.error_message
+
+    def _log_event(self, event_type: str, message: str):
+        """Append a lifecycle event to this hub's event log."""
+        try:
+            self.orm_hub.events.append(
+                HubEvent(
+                    hub_id=self.orm_hub.id,
+                    event_type=event_type,
+                    message=message,
+                    timestamp=datetime.utcnow(),
+                )
+            )
+        except Exception as e:
+            self.log.warning("Could not create hub event (%s): %s", event_type, e)
 
     def _log_error_event(self, operation: str, error_message: str):
         """Log an error event - store in ORM object for later commit"""

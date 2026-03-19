@@ -1,0 +1,735 @@
+name: E2E Tests
+
+# ── Trigger strategy ──────────────────────────────────────────────────────────
+# Run on EVERY branch push so feature branches get immediate feedback.
+# Pull-request runs are deduplicated: when a push and a PR event fire
+# for the same commit, only the push run executes (concurrency group below).
+on:
+  push:
+    branches: ["**"]           # all branches, including feature branches
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Cancel in-progress runs for the same branch/PR so each new push
+# supersedes the previous one rather than queuing behind it.
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  KIND_VERSION: "v0.23.0"
+  HELM_VERSION: "3.15.0"
+  KIND_CLUSTER: jupytercluster-e2e
+  JC_NAMESPACE: jupytercluster
+  JC_IMAGE: jupytercluster
+  JC_TAG: ci
+  JC_PORT: "8080"
+
+# ── Reusable setup composite action (inline via a shared shell script) ────────
+# Each test job repeats the same setup sequence.  A shared script keeps them
+# DRY without needing a separate composite action file.
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1. Build image once; share as a tar artifact for all downstream jobs.
+  # ────────────────────────────────────────────────────────────────────────────
+  build-image:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ env.JC_IMAGE }}:${{ env.JC_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test image
+        run: |
+          docker run --rm ${{ env.JC_IMAGE }}:${{ env.JC_TAG }} \
+            python -c "import jupytercluster; print('version:', jupytercluster.__version__)"
+          docker run --rm ${{ env.JC_IMAGE }}:${{ env.JC_TAG }} helm version
+
+      - name: Export image tar
+        run: docker save ${{ env.JC_IMAGE }}:${{ env.JC_TAG }} -o /tmp/jc-image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jc-docker-image
+          path: /tmp/jc-image.tar
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2. Helm chart static tests — no cluster required, runs in <30 s.
+  # ────────────────────────────────────────────────────────────────────────────
+  helm-validate:
+    name: Helm chart validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: helm lint (default values)
+        run: helm lint helm/jupytercluster/
+
+      - name: helm lint (ci values)
+        run: helm lint helm/jupytercluster/ --values ci/jupytercluster-ci-values.yml
+
+      - name: helm template (default values) — verify render succeeds
+        run: |
+          helm template jupytercluster helm/jupytercluster/ \
+            --debug 2>&1 | grep -v "^---" | head -5
+          helm template jupytercluster helm/jupytercluster/ > /dev/null
+
+      - name: helm template — RBAC with allowNamespaceDeletion=true
+        run: |
+          helm template jupytercluster helm/jupytercluster/ \
+            --set config.allowNamespaceDeletion=true > /tmp/rbac-del.yaml
+          grep -q "delete" /tmp/rbac-del.yaml && echo "delete verb present — OK"
+
+      - name: helm template — RBAC with allowNamespaceDeletion=false
+        run: |
+          helm template jupytercluster helm/jupytercluster/ \
+            --set config.allowNamespaceDeletion=false > /tmp/rbac-nodel.yaml
+
+      - name: helm template — namespace prefix rendering
+        run: |
+          helm template jupytercluster helm/jupytercluster/ \
+            --set config.defaultNamespacePrefix=myprefix- > /tmp/prefix.yaml
+          grep -q "JUPYTERCLUSTER_DEFAULT_NAMESPACE_PREFIX" /tmp/prefix.yaml \
+            && echo "Namespace prefix env var rendered — OK"
+
+      - name: helm template — user namespace management flags
+        run: |
+          helm template jupytercluster helm/jupytercluster/ \
+            --set config.allowUserNamespaceManagement=false > /tmp/unm.yaml
+          grep -q "JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT" /tmp/unm.yaml \
+            && echo "allowUserNamespaceManagement env var rendered — OK"
+
+      - name: helm template — CORS origins rendering
+        run: |
+          helm template jupytercluster helm/jupytercluster/ \
+            --set "config.corsAllowOrigins={http://localhost:3000,https://example.com}" \
+            > /tmp/cors.yaml
+          grep -q "JUPYTERCLUSTER_CORS_ALLOW_ORIGINS" /tmp/cors.yaml \
+            && echo "CORS env var rendered — OK"
+          grep -q "http://localhost:3000" /tmp/cors.yaml \
+            && echo "CORS origin value present — OK"
+
+      - name: helm template — CORS disabled by default
+        run: |
+          helm template jupytercluster helm/jupytercluster/ > /tmp/cors-off.yaml
+          # With empty corsAllowOrigins the env var must NOT appear
+          if grep -q "JUPYTERCLUSTER_CORS_ALLOW_ORIGINS" /tmp/cors-off.yaml; then
+            echo "FAIL: CORS env var rendered with empty corsAllowOrigins"
+            exit 1
+          fi
+          echo "CORS correctly absent with default empty list — OK"
+
+      - name: Upload rendered manifests as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-manifests
+          path: /tmp/*.yaml
+          retention-days: 3
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3. Core API tests + hub CRUD — fast, no JupyterHub deploys (~4 min)
+  #    Runs on every push to every branch.
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-api:
+    name: E2E — API & hub CRUD
+    runs-on: ubuntu-latest
+    needs: build-image
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: pip install pytest requests
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+          version: ${{ env.KIND_VERSION }}
+
+      - name: Create kind cluster
+        run: |
+          kind create cluster \
+            --name ${{ env.KIND_CLUSTER }}-api \
+            --config ci/kind-config.yml \
+            --wait 120s
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Add JupyterHub Helm repo
+        run: |
+          helm repo add jupyterhub https://hub.jupyter.org/helm-chart/
+          helm repo update
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jc-docker-image
+          path: /tmp
+
+      - name: Load image into kind
+        run: |
+          kind load image-archive /tmp/jc-image.tar \
+            --name ${{ env.KIND_CLUSTER }}-api
+
+      - name: Deploy JupyterCluster
+        run: |
+          helm install jupytercluster ./helm/jupytercluster \
+            --namespace ${{ env.JC_NAMESPACE }} \
+            --create-namespace \
+            --values ci/jupytercluster-ci-values.yml \
+            --wait \
+            --timeout 5m
+
+      - name: Wait for pod ready
+        run: |
+          kubectl wait pod \
+            -l app.kubernetes.io/name=jupytercluster \
+            -n ${{ env.JC_NAMESPACE }} \
+            --for=condition=Ready \
+            --timeout=120s
+
+      - name: Bootstrap admin token
+        id: bootstrap
+        run: |
+          POD=$(kubectl get pod \
+            -n ${{ env.JC_NAMESPACE }} \
+            -l app.kubernetes.io/name=jupytercluster \
+            -o jsonpath='{.items[0].metadata.name}')
+          TOKEN=$(kubectl exec -n ${{ env.JC_NAMESPACE }} "$POD" -- \
+            python3 /app/ci/create-bootstrap-token.py admin e2e-bootstrap)
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+          echo "pod=$POD"     >> "$GITHUB_OUTPUT"
+
+      - name: Start port-forward
+        run: |
+          kubectl port-forward \
+            -n ${{ env.JC_NAMESPACE }} \
+            pod/${{ steps.bootstrap.outputs.pod }} \
+            ${{ env.JC_PORT }}:${{ env.JC_PORT }} &
+          # Retry until the tunnel is responsive (up to 15 s)
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:${{ env.JC_PORT }}/api/health && break
+            sleep 1
+          done
+          curl -sf http://localhost:${{ env.JC_PORT }}/api/health | jq .
+
+      - name: Run tests
+        env:
+          JUPYTERCLUSTER_URL: "http://localhost:${{ env.JC_PORT }}"
+          JUPYTERCLUSTER_TOKEN: ${{ steps.bootstrap.outputs.token }}
+        run: |
+          mkdir -p test-results
+          pytest \
+            tests/e2e/test_api.py \
+            tests/e2e/test_hubs.py \
+            tests/e2e/test_errors.py \
+            tests/e2e/test_cors.py \
+            -v --tb=short \
+            --junit-xml=test-results/e2e-api.xml
+
+      - name: Collect pod logs (on failure)
+        if: failure()
+        run: |
+          mkdir -p /tmp/e2e-api-logs
+          kubectl logs \
+            -n ${{ env.JC_NAMESPACE }} \
+            pod/${{ steps.bootstrap.outputs.pod }} \
+            --tail=1000 > /tmp/e2e-api-logs/jupytercluster.log 2>&1 || true
+          kubectl get events -n ${{ env.JC_NAMESPACE }} \
+            --sort-by='.lastTimestamp' \
+            >> /tmp/e2e-api-logs/jupytercluster.log 2>&1 || true
+          kubectl describe pod \
+            -n ${{ env.JC_NAMESPACE }} \
+            pod/${{ steps.bootstrap.outputs.pod }} \
+            >> /tmp/e2e-api-logs/pod-describe.txt 2>&1 || true
+
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-api-logs
+          path: /tmp/e2e-api-logs/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-api-results
+          path: test-results/
+
+      - name: Delete kind cluster
+        if: always()
+        run: kind delete cluster --name ${{ env.KIND_CLUSTER }}-api
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 4. Permission-enforcement tests — every branch push (~4 min)
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-permissions:
+    name: E2E — Permission enforcement
+    runs-on: ubuntu-latest
+    needs: build-image
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: pip install pytest requests
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+          version: ${{ env.KIND_VERSION }}
+
+      - name: Create kind cluster
+        run: |
+          kind create cluster \
+            --name ${{ env.KIND_CLUSTER }}-perm \
+            --config ci/kind-config.yml \
+            --wait 120s
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Add JupyterHub Helm repo
+        run: |
+          helm repo add jupyterhub https://hub.jupyter.org/helm-chart/
+          helm repo update
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jc-docker-image
+          path: /tmp
+
+      - name: Load image into kind
+        run: |
+          kind load image-archive /tmp/jc-image.tar \
+            --name ${{ env.KIND_CLUSTER }}-perm
+
+      - name: Deploy JupyterCluster
+        run: |
+          helm install jupytercluster ./helm/jupytercluster \
+            --namespace ${{ env.JC_NAMESPACE }} \
+            --create-namespace \
+            --values ci/jupytercluster-ci-values.yml \
+            --wait \
+            --timeout 5m
+
+      - name: Wait for pod ready
+        run: |
+          kubectl wait pod \
+            -l app.kubernetes.io/name=jupytercluster \
+            -n ${{ env.JC_NAMESPACE }} \
+            --for=condition=Ready \
+            --timeout=120s
+
+      - name: Bootstrap admin token
+        id: bootstrap
+        run: |
+          POD=$(kubectl get pod \
+            -n ${{ env.JC_NAMESPACE }} \
+            -l app.kubernetes.io/name=jupytercluster \
+            -o jsonpath='{.items[0].metadata.name}')
+          TOKEN=$(kubectl exec -n ${{ env.JC_NAMESPACE }} "$POD" -- \
+            python3 /app/ci/create-bootstrap-token.py admin e2e-bootstrap)
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+          echo "pod=$POD"     >> "$GITHUB_OUTPUT"
+
+      - name: Start port-forward
+        run: |
+          kubectl port-forward \
+            -n ${{ env.JC_NAMESPACE }} \
+            pod/${{ steps.bootstrap.outputs.pod }} \
+            ${{ env.JC_PORT }}:${{ env.JC_PORT }} &
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:${{ env.JC_PORT }}/api/health && break
+            sleep 1
+          done
+
+      - name: Run permission tests
+        env:
+          JUPYTERCLUSTER_URL: "http://localhost:${{ env.JC_PORT }}"
+          JUPYTERCLUSTER_TOKEN: ${{ steps.bootstrap.outputs.token }}
+        run: |
+          mkdir -p test-results
+          pytest tests/e2e/test_permissions.py \
+            -v --tb=short \
+            --junit-xml=test-results/e2e-permissions.xml
+
+      - name: Collect pod logs (on failure)
+        if: failure()
+        run: |
+          kubectl logs \
+            -n ${{ env.JC_NAMESPACE }} \
+            pod/${{ steps.bootstrap.outputs.pod }} \
+            --tail=500 > /tmp/jc-perm.log 2>&1 || true
+
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-permissions-logs
+          path: /tmp/jc-perm.log
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-permissions-results
+          path: test-results/
+
+      - name: Delete kind cluster
+        if: always()
+        run: kind delete cluster --name ${{ env.KIND_CLUSTER }}-perm
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 5. Full JupyterHub deployment tests — runs on EVERY branch push.
+  #    Single hub smoke-deploy keeps total time ≤15 min; multi-hub suite
+  #    added as a separate step that's skipped on draft PRs.
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-deployments:
+    name: E2E — JupyterHub deployments
+    runs-on: ubuntu-latest
+    needs: build-image
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: pip install pytest requests
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+          version: ${{ env.KIND_VERSION }}
+
+      - name: Create kind cluster
+        run: |
+          kind create cluster \
+            --name ${{ env.KIND_CLUSTER }}-deploy \
+            --config ci/kind-config.yml \
+            --wait 120s
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Add JupyterHub Helm repo
+        run: |
+          helm repo add jupyterhub https://hub.jupyter.org/helm-chart/
+          helm repo update
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jc-docker-image
+          path: /tmp
+
+      - name: Load image into kind
+        run: |
+          kind load image-archive /tmp/jc-image.tar \
+            --name ${{ env.KIND_CLUSTER }}-deploy
+
+      - name: Pre-pull JupyterHub images into kind
+        run: |
+          # Render the chart to discover exactly which images will be used,
+          # then pull + load them so pods start without hitting Docker Hub at test time.
+          helm template probe jupyterhub/jupyterhub \
+            --set hub.db.type=sqlite-memory \
+            --set proxy.service.type=ClusterIP \
+            2>/dev/null \
+            | grep -E '^\s+image:' \
+            | sed 's/.*image: //;s/"//g' \
+            | sort -u \
+            > /tmp/jhub-images.txt
+          echo "--- JupyterHub images to pre-pull ---"
+          cat /tmp/jhub-images.txt
+          while IFS= read -r img; do
+            echo "Pulling $img ..."
+            docker pull "$img" || echo "WARNING: could not pull $img (non-fatal)"
+            kind load docker-image "$img" \
+              --name ${{ env.KIND_CLUSTER }}-deploy || true
+          done < /tmp/jhub-images.txt
+
+      - name: Deploy JupyterCluster
+        run: |
+          helm install jupytercluster ./helm/jupytercluster \
+            --namespace ${{ env.JC_NAMESPACE }} \
+            --create-namespace \
+            --values ci/jupytercluster-ci-values.yml \
+            --wait \
+            --timeout 5m
+
+      - name: Wait for pod ready
+        run: |
+          kubectl wait pod \
+            -l app.kubernetes.io/name=jupytercluster \
+            -n ${{ env.JC_NAMESPACE }} \
+            --for=condition=Ready \
+            --timeout=120s
+
+      - name: Bootstrap admin token
+        id: bootstrap
+        run: |
+          POD=$(kubectl get pod \
+            -n ${{ env.JC_NAMESPACE }} \
+            -l app.kubernetes.io/name=jupytercluster \
+            -o jsonpath='{.items[0].metadata.name}')
+          TOKEN=$(kubectl exec -n ${{ env.JC_NAMESPACE }} "$POD" -- \
+            python3 /app/ci/create-bootstrap-token.py admin e2e-bootstrap)
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+          echo "pod=$POD"     >> "$GITHUB_OUTPUT"
+
+      - name: Start port-forward
+        run: |
+          kubectl port-forward \
+            -n ${{ env.JC_NAMESPACE }} \
+            pod/${{ steps.bootstrap.outputs.pod }} \
+            ${{ env.JC_PORT }}:${{ env.JC_PORT }} &
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:${{ env.JC_PORT }}/api/health && break
+            sleep 1
+          done
+          curl -sf http://localhost:${{ env.JC_PORT }}/api/health | jq .
+
+      # ── Smoke: fast tests — verify API + namespace creation, no wait for running ──
+      # test_deploy_creates_hub_record: hub record created, namespace exists within 60 s
+      # test_default_prefix_applied / test_explicit_namespace_overrides_prefix: check namespace field
+      # test_custom_values_persisted: check description round-trip
+      - name: Run smoke deployment tests
+        env:
+          JUPYTERCLUSTER_URL: "http://localhost:${{ env.JC_PORT }}"
+          JUPYTERCLUSTER_TOKEN: ${{ steps.bootstrap.outputs.token }}
+          DEPLOY_TESTS: "1"
+        run: |
+          mkdir -p test-results
+          pytest tests/e2e/test_deployments.py \
+            -v --tb=short \
+            -k "test_deploy_creates_hub_record or test_default_prefix_applied or test_explicit_namespace_overrides_prefix or test_custom_values_persisted" \
+            --junit-xml=test-results/e2e-deploy-smoke.xml
+
+      # ── Full deployment suite: waits for running, multi-hub, update, delete ──
+      # continue-on-error: true — these tests require pods to actually start on
+      # kind, which depends on image pull speed and runner resources.  They are
+      # valuable but should not block the branch gate; smoke tests do that.
+      - name: Run full deployment tests
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          JUPYTERCLUSTER_URL: "http://localhost:${{ env.JC_PORT }}"
+          JUPYTERCLUSTER_TOKEN: ${{ steps.bootstrap.outputs.token }}
+          DEPLOY_TESTS: "1"
+          HUB_READY_TIMEOUT: "480"
+        run: |
+          pytest tests/e2e/test_deployments.py \
+            -v --tb=short \
+            -k "not (test_deploy_creates_hub_record or test_default_prefix_applied or test_explicit_namespace_overrides_prefix or test_custom_values_persisted)" \
+            --junit-xml=test-results/e2e-deploy-full.xml
+
+      # ── Diagnostics ──────────────────────────────────────────────────────
+      - name: Collect all namespace logs (on failure)
+        if: failure()
+        run: |
+          mkdir -p /tmp/e2e-deploy-logs
+
+          kubectl logs \
+            -n ${{ env.JC_NAMESPACE }} \
+            pod/${{ steps.bootstrap.outputs.pod }} \
+            --tail=1000 \
+            > /tmp/e2e-deploy-logs/jupytercluster.log 2>&1 || true
+
+          for ns in $(kubectl get ns -o name | grep jhub- | sed 's|namespace/||'); do
+            kubectl get all -n "$ns" \
+              > /tmp/e2e-deploy-logs/${ns}-resources.txt 2>&1 || true
+            for pod in $(kubectl get pods -n "$ns" -o name 2>/dev/null); do
+              safe=$(echo "$pod" | tr '/' '-')
+              kubectl logs -n "$ns" "$pod" --all-containers --tail=200 \
+                > /tmp/e2e-deploy-logs/${ns}-${safe}.log 2>&1 || true
+            done
+          done
+
+          kubectl get events --all-namespaces --sort-by='.lastTimestamp' \
+            > /tmp/e2e-deploy-logs/events.txt 2>&1 || true
+
+          kubectl get nodes -o wide \
+            > /tmp/e2e-deploy-logs/nodes.txt 2>&1 || true
+
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-deployments-logs
+          path: /tmp/e2e-deploy-logs/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-deployments-results
+          path: test-results/
+
+      - name: Delete kind cluster
+        if: always()
+        run: kind delete cluster --name ${{ env.KIND_CLUSTER }}-deploy
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 6. Database migration tests — run inside a container, no cluster needed.
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-migrations:
+    name: E2E — DB migrations
+    runs-on: ubuntu-latest
+    needs: build-image
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jc-docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/jc-image.tar
+
+      - name: Test fresh migration (SQLite)
+        run: |
+          docker run --rm \
+            -e JUPYTERCLUSTER_DB_URL="sqlite:////tmp/test.db" \
+            ${{ env.JC_IMAGE }}:${{ env.JC_TAG }} \
+            python -c "
+          from jupytercluster.dbutil import upgrade, new_session_factory
+          upgrade('sqlite:////tmp/test.db')
+          engine, factory = new_session_factory('sqlite:////tmp/test.db')
+          db = factory()
+          from jupytercluster import orm
+          # tables must exist
+          db.query(orm.Hub).all()
+          db.query(orm.User).all()
+          db.query(orm.APIToken).all()
+          print('All tables present after upgrade — OK')
+          "
+
+      - name: Test idempotent re-migration
+        run: |
+          docker run --rm \
+            ${{ env.JC_IMAGE }}:${{ env.JC_TAG }} \
+            python -c "
+          from jupytercluster.dbutil import upgrade
+          url = 'sqlite:////tmp/idempotent.db'
+          upgrade(url)
+          upgrade(url)   # second call must not raise
+          print('Idempotent re-migration — OK')
+          "
+
+      - name: Test model integrity after migration
+        run: |
+          docker run --rm \
+            ${{ env.JC_IMAGE }}:${{ env.JC_TAG }} \
+            python -c "
+          from jupytercluster.dbutil import upgrade, new_session_factory
+          from jupytercluster import orm
+          url = 'sqlite:////tmp/integrity.db'
+          upgrade(url)
+          _, factory = new_session_factory(url)
+          db = factory()
+
+          # Create a user
+          user = orm.User(name='migrate-test', admin=False)
+          db.add(user)
+          db.commit()
+          assert user.id is not None
+
+          # Create a token
+          token_orm, raw = orm.APIToken.new(user_id=user.id, name='tok')
+          db.add(token_orm)
+          db.commit()
+          assert token_orm.id is not None
+
+          # Verify hash round-trip
+          assert not token_orm.is_expired()
+          found = db.query(orm.APIToken).filter_by(prefix=raw[:4]).first()
+          assert found is not None
+          import hashlib
+          assert found.hashed_token == hashlib.sha256(raw.encode()).hexdigest()
+          print('Model integrity after migration — OK')
+          "
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 7. Summary gate — single required check for branch protection rules.
+  #    Passes when all fast jobs succeed; deployment result is advisory.
+  # ────────────────────────────────────────────────────────────────────────────
+  e2e-passed:
+    name: E2E passed
+    runs-on: ubuntu-latest
+    needs:
+      - helm-validate
+      - e2e-api
+      - e2e-permissions
+      - e2e-deployments
+      - e2e-migrations
+    if: always()
+    steps:
+      - name: Check all required jobs
+        run: |
+          failed=()
+          [[ "${{ needs.helm-validate.result }}"   != "success" ]] && failed+=("helm-validate")
+          [[ "${{ needs.e2e-api.result }}"         != "success" ]] && failed+=("e2e-api")
+          [[ "${{ needs.e2e-permissions.result }}" != "success" ]] && failed+=("e2e-permissions")
+          [[ "${{ needs.e2e-deployments.result }}" != "success" ]] && failed+=("e2e-deployments")
+          [[ "${{ needs.e2e-migrations.result }}"  != "success" ]] && failed+=("e2e-migrations")
+
+          if [[ ${#failed[@]} -gt 0 ]]; then
+            echo "The following E2E jobs failed: ${failed[*]}"
+            exit 1
+          fi
+          echo "All E2E jobs passed."

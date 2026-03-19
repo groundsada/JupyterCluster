@@ -17,6 +17,21 @@ from traitlets.config import LoggingConfigurable
 logger = logging.getLogger(__name__)
 
 
+def _deep_merge(base: Dict, override: Dict) -> Dict:
+    """Recursively merge *override* into *base*, returning a new dict.
+
+    Dict values are merged recursively; all other types are replaced by the
+    override value.  Neither input is mutated.
+    """
+    result = dict(base)
+    for k, v in override.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
+
 class HubSpawner(LoggingConfigurable):
     """Spawns JupyterHub instances as Helm releases in Kubernetes namespaces"""
 
@@ -125,10 +140,11 @@ class HubSpawner(LoggingConfigurable):
             self.log.error(f"Failed to initialize Kubernetes client: {e}")
             raise
 
-    def _check_storage_class_exists(self, storage_class: str) -> bool:
+    async def _check_storage_class_exists(self, storage_class: str) -> bool:
         """Check if a storage class exists in the cluster"""
         try:
-            storage_classes = self.storage_v1.list_storage_class()
+            loop = asyncio.get_event_loop()
+            storage_classes = await loop.run_in_executor(None, self.storage_v1.list_storage_class)
             for sc in storage_classes.items:
                 if sc.metadata.name == storage_class:
                     return True
@@ -137,7 +153,7 @@ class HubSpawner(LoggingConfigurable):
             self.log.warning(f"Failed to check storage class {storage_class}: {e}")
             return False
 
-    def _check_node_labels_exist(self, required_labels: Dict[str, any]) -> bool:
+    async def _check_node_labels_exist(self, required_labels: Dict[str, any]) -> bool:
         """Check if nodes have the required labels
 
         Args:
@@ -147,7 +163,8 @@ class HubSpawner(LoggingConfigurable):
             True if at least one node has all required labels
         """
         try:
-            nodes = self.core_v1.list_node()
+            loop = asyncio.get_event_loop()
+            nodes = await loop.run_in_executor(None, self.core_v1.list_node)
             for node in nodes.items:
                 node_labels = node.metadata.labels or {}
                 # Check if any node has all required labels
@@ -252,77 +269,9 @@ class HubSpawner(LoggingConfigurable):
                             self.log.warning("Converting empty extraVolumeMounts map to empty list")
                             storage["extraVolumeMounts"] = []
 
-                        # Validate and fix storage class
-                        if "dynamic" in storage and isinstance(storage["dynamic"], dict):
-                            storage_class = storage["dynamic"].get("storageClass")
-                            if storage_class and not self._check_storage_class_exists(
-                                storage_class
-                            ):
-                                self.log.warning(
-                                    f"Storage class '{storage_class}' not found, using 'standard' instead"
-                                )
-                                storage["dynamic"]["storageClass"] = "standard"
+                        # Storage class validation is done async in _deploy_helm_release
 
-                        # Also check db.pvc.storageClassName
-                        if "db" in sanitized and isinstance(sanitized["db"], dict):
-                            if "pvc" in sanitized["db"] and isinstance(
-                                sanitized["db"]["pvc"], dict
-                            ):
-                                db_storage_class = sanitized["db"]["pvc"].get("storageClassName")
-                                if db_storage_class and not self._check_storage_class_exists(
-                                    db_storage_class
-                                ):
-                                    self.log.warning(
-                                        f"DB storage class '{db_storage_class}' not found, using 'standard' instead"
-                                    )
-                                    sanitized["db"]["pvc"]["storageClassName"] = "standard"
-
-                # Validate and fix node affinity
-                if "extraNodeAffinity" in singleuser and isinstance(
-                    singleuser["extraNodeAffinity"], dict
-                ):
-                    required = singleuser["extraNodeAffinity"].get("required", [])
-                    if required:
-                        # Extract required labels from node affinity
-                        required_labels = {}
-                        for match_expressions in required:
-                            if (
-                                isinstance(match_expressions, dict)
-                                and "matchExpressions" in match_expressions
-                            ):
-                                for expr in match_expressions["matchExpressions"]:
-                                    if isinstance(expr, dict) and expr.get("operator") == "In":
-                                        key = expr.get("key")
-                                        values = expr.get("values", [])
-                                        if key and values:
-                                            required_labels[key] = values
-
-                        # Check if labels exist
-                        if required_labels and not self._check_node_labels_exist(required_labels):
-                            self.log.warning(
-                                f"Node labels {required_labels} not found on any node, removing node affinity"
-                            )
-                            singleuser["extraNodeAffinity"] = {}
-
-        # Disable HTTPRoute (Gateway API) - requires CRDs that may not be available
-        # HTTPRoute is a newer feature that requires Gateway API CRDs
-        # We'll disable it to ensure compatibility with standard Kubernetes clusters
-        if "httpRoute" in sanitized:
-            http_route = sanitized["httpRoute"]
-            if isinstance(http_route, dict) and http_route.get("enabled", False):
-                self.log.warning("Disabling httpRoute (Gateway API CRDs may not be available)")
-                http_route["enabled"] = False
-
-        # Also check inside hub config
-        if "hub" in sanitized:
-            hub = sanitized["hub"]
-            if isinstance(hub, dict) and "httpRoute" in hub:
-                http_route = hub["httpRoute"]
-                if isinstance(http_route, dict) and http_route.get("enabled", False):
-                    self.log.warning(
-                        "Disabling httpRoute in hub config (Gateway API CRDs may not be available)"
-                    )
-                    http_route["enabled"] = False
+                # Node affinity label validation is done async in _deploy_helm_release
 
         return sanitized
 
@@ -340,12 +289,42 @@ class HubSpawner(LoggingConfigurable):
         # Ensure namespace exists
         await self._ensure_namespace()
 
-        # Merge default values with provided values
-        merged_values = {**self.default_values}
+        # Start with global defaults from JUPYTERCLUSTER_DEFAULT_HUB_VALUES env var.
+        # These are applied first so that hub-specific values can override them.
+        import os as _os
+
+        merged_values: Dict = {}
+        _global_defaults_raw = _os.environ.get("JUPYTERCLUSTER_DEFAULT_HUB_VALUES")
+        if _global_defaults_raw:
+            try:
+                merged_values = json.loads(_global_defaults_raw)
+            except json.JSONDecodeError:
+                self.log.warning(
+                    "Could not parse JUPYTERCLUSTER_DEFAULT_HUB_VALUES — skipping global defaults"
+                )
+
+        # Apply per-hub default values on top of global defaults (deep merge preserves
+        # nested keys such as hub.resources that would be wiped by a shallow update)
+        merged_values = _deep_merge(merged_values, self.default_values)
+
         if values:
             # CRITICAL: Validate and sanitize user-provided values
             sanitized_values = self._validate_helm_values(values)
-            merged_values.update(sanitized_values)
+            merged_values = _deep_merge(merged_values, sanitized_values)
+
+        # Apply schema-defined fixed values last so they always win (server-side enforcement)
+        _schema_raw = _os.environ.get("JUPYTERCLUSTER_HUB_VALUES_SCHEMA")
+        if _schema_raw:
+            try:
+                _schema = json.loads(_schema_raw)
+                for _path, _val in (_schema.get("fixed") or {}).items():
+                    _parts = _path.split(".")
+                    _cur = merged_values
+                    for _p in _parts[:-1]:
+                        _cur = _cur.setdefault(_p, {})
+                    _cur[_parts[-1]] = _val
+            except (json.JSONDecodeError, AttributeError):
+                pass
 
         # Ensure required schema fields are present (JupyterHub Helm chart requires these)
         # These must be present even if empty to satisfy schema validation
@@ -358,6 +337,18 @@ class HubSpawner(LoggingConfigurable):
                 self.log.warning(f"Field '{field}' is not a dict, converting to dict")
                 merged_values[field] = default_value
 
+        # Auto-enable ingress/httpRoute when hosts are configured but enabled flag is missing.
+        # This handles hubs created before the hostname field was added, and guards against the
+        # form omitting the enabled flag (which would silently skip Ingress/HTTPRoute creation).
+        _ingress = merged_values.get("ingress") or {}
+        if isinstance(_ingress, dict) and _ingress.get("hosts"):
+            _ingress["enabled"] = True
+            merged_values["ingress"] = _ingress
+        _http_route = merged_values.get("httpRoute") or {}
+        if isinstance(_http_route, dict) and _http_route.get("hostnames"):
+            _http_route["enabled"] = True
+            merged_values["httpRoute"] = _http_route
+
         # CRITICAL: Do NOT add namespace to values - it's set via --namespace flag in Helm command
         # The JupyterHub Helm chart doesn't accept namespace in values, and we control
         # the namespace via the --namespace flag to ensure users cannot deploy to other namespaces
@@ -367,8 +358,11 @@ class HubSpawner(LoggingConfigurable):
         # Deploy using Helm (namespace is set via --namespace flag, not in values)
         await self._deploy_helm_release(merged_values)
 
-        # Wait for hub to be ready
-        url = await self._wait_for_hub_ready()
+        # Determine URL: prefer the hostname already configured in ingress/httpRoute
+        # rather than discovering it from K8s (which has timing/availability issues).
+        url = self._url_from_values(merged_values)
+        if not url:
+            url = await self._wait_for_hub_ready()
 
         return self.namespace, url
 
@@ -385,30 +379,32 @@ class HubSpawner(LoggingConfigurable):
         Returns:
             None if running, exit code if stopped
         """
+        loop = asyncio.get_event_loop()
         try:
             # Check if namespace exists
             try:
-                ns = self.core_v1.read_namespace(name=self.namespace)
+                await loop.run_in_executor(
+                    None, lambda: self.core_v1.read_namespace(name=self.namespace)
+                )
             except ApiException as e:
                 if e.status == 404:
                     return 1  # Namespace doesn't exist, hub is stopped
                 raise
 
             # Check if Helm release exists by checking for hub pods
-            pods = self.core_v1.list_namespaced_pod(namespace=self.namespace)
+            pods = await loop.run_in_executor(
+                None, lambda: self.core_v1.list_namespaced_pod(namespace=self.namespace)
+            )
             hub_pods = [p for p in pods.items if "jupyterhub" in p.metadata.name.lower()]
 
             if not hub_pods:
                 return 1  # No hub pods, consider it stopped
 
-            # Check if any pod is running
-            running = any(
-                p.status.phase == "Running"
-                for p in hub_pods
-                if p.status.phase in ["Running", "Pending"]
-            )
+            # Pods in Running OR Pending/ContainerCreating mean the release is
+            # deployed and coming up — not stopped.
+            active = any(p.status.phase in ("Running", "Pending") for p in hub_pods)
 
-            return None if running else 1
+            return None if active else 1
 
         except Exception as e:
             self.log.error(f"Error polling hub {self.hub_name}: {e}")
@@ -416,11 +412,14 @@ class HubSpawner(LoggingConfigurable):
 
     async def _ensure_namespace(self):
         """Ensure the namespace exists and is properly labeled"""
+        loop = asyncio.get_event_loop()
         # Check if namespace creation is allowed
         if not self._get_allow_namespace_creation():
             # Just verify namespace exists, don't create it
             try:
-                ns = self.core_v1.read_namespace(name=self.namespace)
+                await loop.run_in_executor(
+                    None, lambda: self.core_v1.read_namespace(name=self.namespace)
+                )
                 self.log.info(f"Namespace {self.namespace} exists (namespace creation disabled)")
                 return
             except ApiException as e:
@@ -433,7 +432,9 @@ class HubSpawner(LoggingConfigurable):
 
         # Namespace creation is allowed - proceed with creation logic
         try:
-            ns = self.core_v1.read_namespace(name=self.namespace)
+            ns = await loop.run_in_executor(
+                None, lambda: self.core_v1.read_namespace(name=self.namespace)
+            )
             # Update labels to ensure ownership
             ns.metadata.labels.update(
                 {
@@ -442,11 +443,12 @@ class HubSpawner(LoggingConfigurable):
                     "jupytercluster.io/owner": self.owner,
                 }
             )
-            self.core_v1.patch_namespace(name=self.namespace, body=ns)
+            await loop.run_in_executor(
+                None, lambda: self.core_v1.patch_namespace(name=self.namespace, body=ns)
+            )
             self.log.debug(f"Namespace {self.namespace} already exists, updated labels")
         except ApiException as e:
             if e.status == 404:
-                # Create namespace with proper labels and ownership
                 namespace_body = client.V1Namespace(
                     metadata=client.V1ObjectMeta(
                         name=self.namespace,
@@ -457,7 +459,9 @@ class HubSpawner(LoggingConfigurable):
                         },
                     ),
                 )
-                self.core_v1.create_namespace(body=namespace_body)
+                await loop.run_in_executor(
+                    None, lambda: self.core_v1.create_namespace(body=namespace_body)
+                )
                 self.log.info(f"Created namespace {self.namespace} for owner {self.owner}")
             else:
                 raise
@@ -510,7 +514,7 @@ class HubSpawner(LoggingConfigurable):
                 # Final check: Validate storage class exists
                 if "dynamic" in storage and isinstance(storage["dynamic"], dict):
                     storage_class = storage["dynamic"].get("storageClass")
-                    if storage_class and not self._check_storage_class_exists(storage_class):
+                    if storage_class and not await self._check_storage_class_exists(storage_class):
                         self.log.warning(
                             f"Storage class '{storage_class}' not found in final check, using 'standard'"
                         )
@@ -520,7 +524,9 @@ class HubSpawner(LoggingConfigurable):
         if "db" in values and isinstance(values["db"], dict):
             if "pvc" in values["db"] and isinstance(values["db"]["pvc"], dict):
                 db_storage_class = values["db"]["pvc"].get("storageClassName")
-                if db_storage_class and not self._check_storage_class_exists(db_storage_class):
+                if db_storage_class and not await self._check_storage_class_exists(
+                    db_storage_class
+                ):
                     self.log.warning(
                         f"DB storage class '{db_storage_class}' not found in final check, using 'standard'"
                     )
@@ -546,7 +552,7 @@ class HubSpawner(LoggingConfigurable):
                                     if key and values_list:
                                         required_labels[key] = values_list
 
-                    if required_labels and not self._check_node_labels_exist(required_labels):
+                    if required_labels and not await self._check_node_labels_exist(required_labels):
                         self.log.warning(
                             f"Node labels {required_labels} not found in final check, removing node affinity"
                         )
@@ -565,14 +571,20 @@ class HubSpawner(LoggingConfigurable):
                 "helm",
                 "upgrade",
                 "--install",
+                "--cleanup-on-fail",  # Roll back newly created resources if upgrade fails
                 self.helm_release_name,
                 self.helm_chart,
                 "--namespace",
                 self.namespace,
-                "--create-namespace",
                 "--values",
                 values_file,
             ]
+
+            # Only ask Helm to create the namespace when the service account
+            # has permission to do so.  When namespace creation is disabled,
+            # the namespace must already exist.
+            if self._get_allow_namespace_creation():
+                cmd.insert(cmd.index("--values"), "--create-namespace")
 
             # Add chart version if specified
             if self.helm_chart_version:
@@ -596,6 +608,58 @@ class HubSpawner(LoggingConfigurable):
             if process.returncode != 0:
                 error_msg = stderr.decode() if stderr else stdout.decode()
                 self.log.error(f"Helm deployment failed: {error_msg}")
+
+                # Recover from a release stuck in "pending-install" state.
+                # This happens when a previous install was interrupted before
+                # Helm could record a successful revision.
+                if "release: already exists" in error_msg or (
+                    "cannot re-use a name that is still in use" in error_msg
+                ):
+                    self.log.warning(
+                        f"Release {self.helm_release_name} is stuck in pending state — "
+                        "attempting rollback then retry."
+                    )
+                    # Try rollback first (cheaper than uninstall)
+                    rollback = await asyncio.create_subprocess_exec(
+                        "helm",
+                        "rollback",
+                        self.helm_release_name,
+                        "--namespace",
+                        self.namespace,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await rollback.communicate()
+                    if rollback.returncode != 0:
+                        # No prior revision to roll back to — uninstall instead
+                        self.log.warning(f"Rollback failed, uninstalling {self.helm_release_name}…")
+                        uninstall = await asyncio.create_subprocess_exec(
+                            "helm",
+                            "uninstall",
+                            self.helm_release_name,
+                            "--namespace",
+                            self.namespace,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        await uninstall.communicate()
+
+                    # Retry deployment
+                    self.log.info("Retrying Helm deployment after recovery…")
+                    retry = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    r_stdout, r_stderr = await retry.communicate()
+                    if retry.returncode != 0:
+                        error_msg = r_stderr.decode() if r_stderr else r_stdout.decode()
+                        raise RuntimeError(f"Helm deployment failed after recovery: {error_msg}")
+                    self.log.info(
+                        f"Helm release {self.helm_release_name} deployed successfully after recovery"
+                    )
+                    return
+
                 raise RuntimeError(f"Helm deployment failed: {error_msg}")
 
             self.log.info(f"Helm release {self.helm_release_name} deployed successfully")
@@ -603,6 +667,31 @@ class HubSpawner(LoggingConfigurable):
         finally:
             # Clean up temp file
             Path(values_file).unlink(missing_ok=True)
+
+    async def _delete_namespace(self, namespace: str):
+        """Delete a Kubernetes namespace.
+
+        Only called when ``allowNamespaceDeletion`` is enabled in config.
+        The namespace must be managed by JupyterCluster (has the managed label).
+        """
+        loop = asyncio.get_event_loop()
+        try:
+            ns = await loop.run_in_executor(
+                None, lambda: self.core_v1.read_namespace(name=namespace)
+            )
+            labels = ns.metadata.labels or {}
+            if labels.get("jupytercluster.io/managed") != "true":
+                self.log.warning(
+                    f"Namespace {namespace} is not managed by JupyterCluster — skipping deletion"
+                )
+                return
+            await loop.run_in_executor(None, lambda: self.core_v1.delete_namespace(name=namespace))
+            self.log.info(f"Deleted namespace {namespace}")
+        except ApiException as e:
+            if e.status == 404:
+                self.log.debug(f"Namespace {namespace} already gone")
+            else:
+                raise
 
     async def _ensure_helm_repo(self):
         """Ensure Helm repository is added"""
@@ -654,6 +743,24 @@ class HubSpawner(LoggingConfigurable):
                 self.log.error(f"Helm deletion failed: {error_msg}")
                 raise RuntimeError(f"Helm deletion failed: {error_msg}")
 
+    def _url_from_values(self, values: Dict) -> str:
+        """Return the hub URL derived from ingress/httpRoute config in *values*, or ''."""
+        ingress = values.get("ingress") or {}
+        if ingress.get("enabled"):
+            hosts = ingress.get("hosts") or []
+            host = hosts[0] if isinstance(hosts, list) and hosts else None
+            if host and isinstance(host, str):
+                return f"https://{host}"
+
+        http_route = values.get("httpRoute") or {}
+        if http_route.get("enabled"):
+            hostnames = http_route.get("hostnames") or []
+            host = hostnames[0] if isinstance(hostnames, list) and hostnames else None
+            if host and isinstance(host, str):
+                return f"https://{host}"
+
+        return ""
+
     async def _wait_for_hub_ready(self) -> str:
         """Wait for hub to be ready and return its URL"""
         self.log.info(f"Waiting for hub {self.hub_name} to be ready...")
@@ -665,8 +772,11 @@ class HubSpawner(LoggingConfigurable):
 
         while elapsed < max_wait:
             try:
+                loop = asyncio.get_event_loop()
                 # Check for proxy service
-                services = self.core_v1.list_namespaced_service(namespace=self.namespace)
+                services = await loop.run_in_executor(
+                    None, lambda: self.core_v1.list_namespaced_service(namespace=self.namespace)
+                )
                 proxy_service = None
                 for svc in services.items:
                     if "proxy" in svc.metadata.name.lower() or "hub" in svc.metadata.name.lower():
@@ -680,7 +790,10 @@ class HubSpawner(LoggingConfigurable):
                         from kubernetes.client import NetworkingV1Api
 
                         net_v1 = NetworkingV1Api()
-                        ingresses = net_v1.list_namespaced_ingress(namespace=self.namespace)
+                        loop2 = asyncio.get_event_loop()
+                        ingresses = await loop2.run_in_executor(
+                            None, lambda: net_v1.list_namespaced_ingress(namespace=self.namespace)
+                        )
                         if ingresses.items:
                             ingress = ingresses.items[0]
                             if ingress.spec.rules:

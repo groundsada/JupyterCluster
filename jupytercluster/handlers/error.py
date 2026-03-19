@@ -2,8 +2,6 @@
 
 import logging
 
-from tornado import web
-
 from .base import BaseHandler
 
 logger = logging.getLogger(__name__)

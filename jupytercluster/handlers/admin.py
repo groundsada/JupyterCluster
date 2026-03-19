@@ -36,14 +36,16 @@ class AdminHandler(BaseHandler):
         user_list = []
         for u in users:
             user_list.append(
-                {
-                    "name": u.name,
-                    "admin": u.admin,
-                    "max_hubs": u.max_hubs,
-                    "allowed_namespaces": u.allowed_namespaces or [],
-                    "created": u.created.isoformat() if u.created else None,
-                    "last_activity": u.last_activity.isoformat() if u.last_activity else None,
-                }
+                DictObject(
+                    {
+                        "name": u.name,
+                        "admin": u.admin,
+                        "max_hubs": u.max_hubs,
+                        "allowed_namespaces": u.allowed_namespaces or [],
+                        "created": u.created.isoformat() if u.created else None,
+                        "last_activity": u.last_activity.isoformat() if u.last_activity else None,
+                    }
+                )
             )
 
         # Get all hubs

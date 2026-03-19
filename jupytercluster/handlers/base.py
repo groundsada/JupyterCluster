@@ -89,6 +89,7 @@ class BaseHandler(web.RequestHandler):
             kwargs.setdefault("allowed_namespaces", [])
             kwargs.setdefault("max_hubs", None)
             kwargs.setdefault("current_hub_count", 0)
+            kwargs.setdefault("existing_values_yaml", "")
             kwargs.setdefault(
                 "default_namespace_prefix",
                 (
@@ -101,6 +102,14 @@ class BaseHandler(web.RequestHandler):
         # Hub detail template specific variables
         if name == "hub_detail.html":
             kwargs.setdefault("error", None)
+            kwargs.setdefault("existing_values_yaml", "")
+
+        # Inject hub values schema for templates that include the editor
+        if name in ("hub_create.html", "hub_detail.html"):
+            import json as _json
+
+            schema = self.jupytercluster.get_hub_values_schema() if self.jupytercluster else {}
+            kwargs.setdefault("hub_values_schema_json", _json.dumps(schema))
 
         # XSRF token for forms
         try:

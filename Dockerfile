@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY jupytercluster/ /app/jupytercluster/
 COPY setup.py pyproject.toml /app/
 
+# Copy CI helpers (used by kubectl exec in E2E workflows)
+COPY ci/ /app/ci/
+
 # Copy templates and static to expected location
 # Tornado looks for templates relative to the app module
 # Ensure templates are accessible from jupytercluster package

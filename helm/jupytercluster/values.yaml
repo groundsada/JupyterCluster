@@ -77,18 +77,92 @@ persistence:
   size: 1Gi
 
 config:
-  dbUrl: "sqlite:///data/jupytercluster.db"
+  dbUrl: "sqlite:////data/jupytercluster.db"
   port: 8080
+  # Optional prefix prepended to auto-generated namespace names.
+  # When a hub is created without an explicit namespace, the namespace is derived as
+  # "<defaultNamespacePrefix><hub-name>".  Set to "" to disable the prefix.
   defaultNamespacePrefix: "jupyterhub-"
   defaultHelmChart: "jupyterhub/jupyterhub"
-  # Allow JupyterCluster to create new namespaces for hubs
-  # Set to false to restrict JupyterCluster to only use existing namespaces
+  # Default Helm values merged into every JupyterHub deployment.
+  # These are applied before user-supplied values, so users can override them.
+  # prePuller is disabled by default: it uses DaemonSets which many clusters block.
+  defaultHubValues:
+    proxy:
+      service:
+        type: ClusterIP
+      chp:
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      traefik:
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+    hub:
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+    prePuller:
+      hook:
+        enabled: false
+      continuous:
+        enabled: false
+    scheduling:
+      userScheduler:
+        enabled: false
+      userPlaceholder:
+        enabled: false
+  # JSON schema for the hub values GUI editor.
+  # Leave empty to use the built-in default schema.
+  # Provide a JSON object to customise the editor for your cluster.
+  hubValuesSchema: {}
+  # Allow JupyterCluster to create new Kubernetes namespaces for hubs.
+  # Set to false to restrict JupyterCluster to only use pre-existing namespaces.
   allowNamespaceCreation: true
+  # Allow non-admin users to create/delete hubs (which create/delete namespaces).
+  # When false, only admins can create or delete hubs.
+  # Can be overridden per-user via can_create_namespaces / can_delete_namespaces in defaultUsers.
+  allowUserNamespaceManagement: true
+  # When true, deleting a hub also deletes its Kubernetes namespace.
+  # When false (default), the namespace is kept after hub deletion.
+  # Only namespaces labelled "jupytercluster.io/managed=true" are eligible for deletion.
+  allowNamespaceDeletion: false
+  # Origins permitted for CORS requests to the API.
+  # Use ["*"] to allow all origins (not recommended in production).
+  # Empty list (default) disables CORS headers entirely.
+  corsAllowOrigins: []
   authenticator:
     class: "jupytercluster.auth.SimpleAuthenticator"
     users: {}
     adminUsers: {}
-  # Default users with their allowed namespaces
-  # Format: { username: { admin: false, allowed_namespaces: ["ns1", "ns2"], max_hubs: 3 } }
+  # Default users created (or updated) at startup.
+  # Supported fields per user:
+  #   admin: bool                          - grant admin privileges
+  #   allowed_namespaces: [str]            - restrict to specific namespace names (exact match)
+  #   max_hubs: int                        - cap on number of hubs this user can create
+  #   can_create_namespaces: bool|null     - override allowUserNamespaceManagement for creates
+  #   can_delete_namespaces: bool|null     - override allowUserNamespaceManagement for deletes
+  # Example:
+  #   defaultUsers:
+  #     alice:
+  #       admin: true
+  #     bob:
+  #       allowed_namespaces: ["team-bob"]
+  #       max_hubs: 2
+  #       can_create_namespaces: true
+  #       can_delete_namespaces: false
   defaultUsers: {}
 

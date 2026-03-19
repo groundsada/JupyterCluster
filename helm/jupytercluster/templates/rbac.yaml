@@ -21,7 +21,7 @@ rules:
 # Core Kubernetes resources
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["get", "list", "watch"{{- if .Values.config.allowNamespaceCreation }}, "create", "update", "patch", "delete"{{- end }}]
+  verbs: ["get", "list", "watch"{{- if .Values.config.allowNamespaceCreation }}, "create", "update", "patch"{{- if .Values.config.allowNamespaceDeletion }}, "delete"{{- end }}{{- end }}]
 - apiGroups: [""]
   resources: ["pods", "services", "configmaps", "secrets", "serviceaccounts"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

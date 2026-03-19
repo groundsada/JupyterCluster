@@ -1,6 +1,9 @@
 """Database models for JupyterCluster"""
 
+import hashlib
+import secrets
 from datetime import datetime
+from typing import List, Optional, Tuple
 
 from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
@@ -77,11 +80,121 @@ class User(Base):
     allowed_namespaces = Column(JSON, default=list)  # List of allowed namespace names (exact match)
     max_hubs = Column(Integer, default=None)  # Maximum number of hubs user can create
 
+    # Per-user namespace management permissions (None = inherit global allowUserNamespaceManagement)
+    can_create_namespaces = Column(Boolean, default=None)  # None = inherit global setting
+    can_delete_namespaces = Column(Boolean, default=None)  # None = inherit global setting
+
     created = Column(DateTime, default=datetime.utcnow)
     last_activity = Column(DateTime, default=datetime.utcnow)
 
+    # API tokens belonging to this user
+    tokens = relationship("APIToken", back_populates="user", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<User(name={self.name}, admin={self.admin})>"
+
+
+class APIToken(Base):
+    """API authentication token.
+
+    Mirrors JupyterHub's token model:
+    - The raw token value is generated once and returned to the caller.
+    - Only the SHA-256 hash is persisted; the raw value cannot be recovered.
+    - ``prefix`` stores the first 4 characters of the raw token in plaintext
+      to support "show my tokens" UIs without a full table scan.
+    - Empty ``scopes`` list means the token inherits all of the owner's
+      permissions (matching JupyterHub's default token behaviour).
+    """
+
+    __tablename__ = "api_tokens"
+
+    id = Column(Integer, primary_key=True)
+    # SHA-256 hex digest of the raw token — never store plaintext
+    hashed_token = Column(String(128), unique=True, nullable=False, index=True)
+    # First 4 chars of the raw token (plaintext) for display / prefix lookup
+    prefix = Column(String(16), nullable=False, index=True)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255))  # Human-readable label, e.g. "ci-pipeline"
+    scopes = Column(JSON, default=list)  # [] → inherit full user permissions
+    note = Column(Text)  # Free-text description
+
+    created = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)  # None → never expires
+    last_activity = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="tokens")
+
+    # ------------------------------------------------------------------
+    # Factory — the only place raw tokens are ever created
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def new(
+        cls,
+        user_id: int,
+        name: Optional[str] = None,
+        scopes: Optional[List[str]] = None,
+        expires_at: Optional[datetime] = None,
+        note: Optional[str] = None,
+    ) -> Tuple["APIToken", str]:
+        """Create a new APIToken and return ``(orm_object, raw_token)``.
+
+        The raw token is a 64-character hex string (256 bits of entropy).
+        It is returned *once* and never stored.  Only the SHA-256 digest
+        is persisted, following JupyterHub's token security model.
+
+        Usage::
+
+            token_orm, raw = APIToken.new(user_id=user.id, name="ci")
+            db.add(token_orm)
+            db.commit()
+            # Send `raw` to the caller — it cannot be recovered later.
+        """
+        raw = secrets.token_hex(32)  # 64 hex chars, 256 bits
+        hashed = hashlib.sha256(raw.encode()).hexdigest()
+        token = cls(
+            hashed_token=hashed,
+            prefix=raw[:4],
+            user_id=user_id,
+            name=name,
+            scopes=scopes or [],
+            expires_at=expires_at,
+            note=note,
+        )
+        return token, raw
+
+    @staticmethod
+    def hash(raw: str) -> str:
+        """Return the SHA-256 hex digest used for DB lookups."""
+        return hashlib.sha256(raw.encode()).hexdigest()
+
+    def is_expired(self) -> bool:
+        return self.expires_at is not None and self.expires_at < datetime.utcnow()
+
+    def to_dict(self, include_token: Optional[str] = None) -> dict:
+        """Serialise to a JSON-safe dict.
+
+        ``include_token`` should be passed only immediately after creation
+        so that the raw value appears in the POST 201 response.
+        """
+        d = {
+            "id": self.id,
+            "name": self.name,
+            "prefix": self.prefix,
+            "user": self.user.name if self.user else None,
+            "scopes": self.scopes or [],
+            "note": self.note,
+            "created": self.created.isoformat() if self.created else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "last_activity": self.last_activity.isoformat() if self.last_activity else None,
+        }
+        if include_token is not None:
+            d["token"] = include_token
+        return d
+
+    def __repr__(self):
+        return f"<APIToken(id={self.id}, user_id={self.user_id}, prefix={self.prefix!r})>"
 
 
 class Config(Base):

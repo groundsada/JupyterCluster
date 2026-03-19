@@ -8,6 +8,8 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "jupytercluster.selectorLabels" . | nindent 6 }}
@@ -46,8 +48,24 @@ spec:
               value: {{ .Values.config.defaultNamespacePrefix | quote }}
             - name: JUPYTERCLUSTER_DEFAULT_HELM_CHART
               value: {{ .Values.config.defaultHelmChart | quote }}
+            {{- if .Values.config.defaultHubValues }}
+            - name: JUPYTERCLUSTER_DEFAULT_HUB_VALUES
+              value: {{ .Values.config.defaultHubValues | toJson | quote }}
+            {{- end }}
+            {{- if .Values.config.hubValuesSchema }}
+            - name: JUPYTERCLUSTER_HUB_VALUES_SCHEMA
+              value: {{ .Values.config.hubValuesSchema | toJson | quote }}
+            {{- end }}
             - name: JUPYTERCLUSTER_ALLOW_NAMESPACE_CREATION
-              value: {{ .Values.config.allowNamespaceCreation | default true | quote }}
+              value: {{ .Values.config.allowNamespaceCreation | toString | quote }}
+            - name: JUPYTERCLUSTER_ALLOW_USER_NAMESPACE_MANAGEMENT
+              value: {{ .Values.config.allowUserNamespaceManagement | toString | quote }}
+            - name: JUPYTERCLUSTER_ALLOW_NAMESPACE_DELETION
+              value: {{ .Values.config.allowNamespaceDeletion | toString | quote }}
+            {{- if .Values.config.corsAllowOrigins }}
+            - name: JUPYTERCLUSTER_CORS_ALLOW_ORIGINS
+              value: {{ .Values.config.corsAllowOrigins | join "," | quote }}
+            {{- end }}
             {{- if .Values.config.authenticator }}
             - name: JUPYTERCLUSTER_AUTHENTICATOR_CLASS
               value: {{ .Values.config.authenticator.class | quote }}

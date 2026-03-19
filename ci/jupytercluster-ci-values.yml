@@ -1,0 +1,67 @@
+# JupyterCluster Helm values for the E2E test environment.
+# Loaded by the e2e workflow via --values ci/jupytercluster-ci-values.yml
+
+image:
+  repository: jupytercluster
+  tag: ci
+  pullPolicy: Never   # Image is loaded directly into kind, no registry pull
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+rbac:
+  clusterScoped: true   # E2E needs cluster-wide namespace management
+
+config:
+  dbUrl: "sqlite:////data/jupytercluster.db"
+  port: 8080
+
+  # Namespace prefix used in deployment tests — short to keep namespace names
+  # under Kubernetes' 63-character limit when combined with hub names.
+  defaultNamespacePrefix: "jhub-"
+
+  allowNamespaceCreation: true
+  allowUserNamespaceManagement: true
+  allowNamespaceDeletion: true   # Enabled so cleanup tests can verify deletion
+
+  # Allow all origins in CI — test_cors.py verifies the headers
+  corsAllowOrigins:
+    - "http://localhost:3000"
+    - "https://trusted.example.com"
+    - "*"
+
+  defaultHelmChart: "jupyterhub/jupyterhub"
+
+  authenticator:
+    class: "jupytercluster.auth.SimpleAuthenticator"
+    # admin / admin-password used by E2E tests for cookie-based login
+    users:
+      admin: "admin-password"
+      alice: "alice-password"
+      bob: "bob-password"
+    adminUsers:
+      admin: "admin-password"
+
+  # admin is pre-created as an admin.
+  # alice is a regular user with no restrictions.
+  # bob is a restricted user — can_create_namespaces=false to test permission enforcement.
+  defaultUsers:
+    admin:
+      admin: true
+    alice:
+      admin: false
+      max_hubs: 5
+    bob:
+      admin: false
+      can_create_namespaces: false
+      can_delete_namespaces: false
+
+persistence:
+  enabled: true
+  storageClass: "standard"   # kind's default StorageClass
+  size: 1Gi

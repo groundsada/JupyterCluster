@@ -1,0 +1,276 @@
+image:
+  repository: ghcr.io/groundsada/jupytercluster
+  tag: develop
+  pullPolicy: Always
+
+resources:
+  limits:
+    cpu: "2"
+    memory: 2Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+ingress:
+  enabled: true
+  className: haproxy
+  hosts:
+    - host: jupytercluster-mfsada-temp.nrp-nautilus.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - jupytercluster-mfsada-temp.nrp-nautilus.io
+      secretName: jupytercluster-tls
+
+config:
+  dbUrl: "sqlite:////data/jupytercluster.db"
+
+  # No prefix — hub name is used as namespace name exactly
+  defaultNamespacePrefix: ""
+
+  # Only pre-existing namespaces are allowed; JupyterCluster will not create new ones
+  allowNamespaceCreation: false
+
+  # Non-admin users may create/delete hubs (namespace must already exist)
+  allowUserNamespaceManagement: true
+
+  # Do not delete namespaces when a hub is deleted
+  allowNamespaceDeletion: false
+
+  # Global JupyterHub defaults applied to every hub deployment (users can override these).
+  # Values already enforced by hubValuesSchema.fixed are intentionally omitted here.
+  defaultHubValues:
+    prePuller:
+      hook:
+        enabled: false
+      continuous:
+        enabled: false
+    scheduling:
+      userScheduler:
+        enabled: false
+      userPlaceholder:
+        enabled: false
+
+  authenticator:
+    class: "jupytercluster.auth.SimpleAuthenticator"
+    users:
+      mfsada: mfsada123
+    adminUsers:
+      mfsada: true
+
+  defaultUsers:
+    mfsada:
+      admin: true
+      allowed_namespaces:
+        - mfsada-temp-jc
+        - mfsada-jc
+        - mfsada-test-armada
+        - mfsada-test-armada2
+
+  # Custom GUI schema for this deployment.
+  # - allowAdvancedYaml: false  hides the raw YAML tab entirely
+  # - fixed: values always applied on top; users cannot override them (enforced client + server)
+  # - groups: only these fields are shown in the Simple Editor
+  hubValuesSchema:
+    allowAdvancedYaml: false
+    fixed:
+      # ── JupyterHub authenticator (DummyAuthenticator: any password accepted) ──
+      hub.config.JupyterHub.authenticator_class: dummy
+      hub.config.DummyAuthenticator.password: ""
+
+      # ── Hub database (NRP standard) ─────────────────────────────────────────
+      hub.db.type: sqlite-pvc
+      hub.db.pvc.storageClassName: rook-ceph-block
+      hub.db.pvc.storage: 1Gi
+      hub.db.pvc.accessModes:
+        - ReadWriteOnce
+      # Recreate strategy required for RWO PVCs (avoids two pods fighting over the volume)
+      hub.deploymentStrategy.type: Recreate
+      hub.networkPolicy.enabled: false
+
+      # ── Hub resources (NRP spec) ────────────────────────────────────────────
+      hub.resources.requests.cpu: "100m"
+      hub.resources.requests.memory: "512Mi"
+      hub.resources.limits.cpu: "2"
+      hub.resources.limits.memory: "1Gi"
+
+      # ── Proxy (NRP spec) ────────────────────────────────────────────────────
+      proxy.service.type: ClusterIP
+      proxy.chp.resources.requests.cpu: "1"
+      proxy.chp.resources.requests.memory: "512Mi"
+      proxy.chp.resources.limits.cpu: "6"
+      proxy.chp.resources.limits.memory: "10Gi"
+
+      # ── Single-user pods (NRP spec) ─────────────────────────────────────────
+      singleuser.uid: 0
+      singleuser.fsGid: 100
+      singleuser.extraEnv.GRANT_SUDO: "yes"
+      singleuser.extraPodConfig.securityContext.fsGroupChangePolicy: "OnRootMismatch"
+      singleuser.extraPodConfig.securityContext.fsGroup: 100
+      singleuser.cloudMetadata.blockWithIptables: false
+      singleuser.networkPolicy.enabled: false
+      singleuser.defaultUrl: "/lab"
+      singleuser.startTimeout: 600
+      # Do NOT set singleuser.cmd: null — b-data images use their own entrypoint
+      # which is not jupyterhub-singleuser and causes an instant container crash.
+      # KubeSpawner's default (jupyterhub-singleuser) is used when cmd is unset.
+
+      # Give single-user servers up to 5 min to respond to HTTP after pod is running
+      # (needed for large images like the b-data CUDA variants that take time to init)
+      hub.config.Spawner.http_timeout: 300
+
+      # ── Single-user node affinity (NRP: us-west region only) ────────────────
+      singleuser.extraNodeAffinity.required:
+        - matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+              - us-west
+
+      # ── Single-user storage (NRP standard: dynamic RWO on rook-ceph-block) ──
+      # capacity is intentionally NOT fixed — users set it in the Simple Editor
+      singleuser.storage.type: dynamic
+      singleuser.storage.homeMountPath: /home/jovyan
+      singleuser.storage.dynamic.storageClass: rook-ceph-block
+      singleuser.storage.dynamic.pvcNameTemplate: "claim-{username}{servername}"
+      singleuser.storage.dynamic.volumeNameTemplate: "volume-{username}{servername}"
+      singleuser.storage.dynamic.storageAccessModes:
+        - ReadWriteOnce
+
+      # ── Profile list (NRP standard images) ──────────────────────────────────
+      # Users pick a profile when launching their server; image + resources come from the profile.
+      # cpu/memory defaults in the Simple Editor apply to profiles that don't override them.
+      singleuser.profileList:
+        - display_name: "Scipy (Python)"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/scipy-notebook:2024-04-22
+          default: true
+        - display_name: "R"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/r-notebook:2024-04-22
+        - display_name: "Julia"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/julia-notebook:2024-04-22
+        - display_name: "Datascience (Python + R + Julia)"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/datascience-notebook:2024-04-22
+        - display_name: "Tensorflow (CUDA)"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/tensorflow-notebook:cuda-2024-04-22
+        - display_name: "PyTorch (CUDA)"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/pytorch-notebook:cuda12-2024-04-22
+        - display_name: "PySpark"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/pyspark-notebook:2024-04-22
+        - display_name: "All Spark"
+          kubespawner_override:
+            image_spec: quay.io/jupyter/all-spark-notebook:2024-04-22
+        - display_name: "B-Data Python/Scipy (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/python/scipy:3
+        - display_name: "B-Data Julia (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/julia/base:1
+        - display_name: "B-Data R (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/r/base:4
+        - display_name: "B-Data R tidyverse (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/r/tidyverse:4
+        - display_name: "B-Data R geospatial (CUDA)"
+          kubespawner_override:
+            image_spec: glcr.b-data.ch/jupyterlab/cuda/r/geospatial:4
+
+      # ── Culling (always on, not user-configurable) ──────────────────────────
+      cull.enabled: true
+      cull.timeout: 3600
+      cull.every: 600
+      cull.concurrency: 10
+      cull.maxAge: 0
+      cull.users: false
+      cull.removeNamedServers: false
+
+      # ── prePuller and scheduling (for immutable display in GUI) ─────────────
+      prePuller.hook.enabled: false
+      prePuller.continuous.enabled: false
+      scheduling.userScheduler.enabled: false
+      scheduling.userPlaceholder.enabled: false
+
+      # ── Ingress/httpRoute infrastructure (enabled only when user provides hostname) ──
+      # ingress.enabled and httpRoute.enabled are NOT fixed here — they are set
+      # dynamically by the hostname field in the GUI only when a hostname is given,
+      # preventing an empty-host wildcard that the admission webhook blocks.
+      ingress.ingressClassName: haproxy
+      ingress.pathSuffix: ""
+      httpRoute.gateway.name: ingress
+      httpRoute.gateway.namespace: haproxy
+
+    groups:
+      - title: Hub Access
+        fields:
+          - label: Hub Hostname
+            path: ingress.hosts
+            mirrorPaths:
+              - httpRoute.hostnames
+              - ingress.tls.0.hosts
+            type: hostname
+            domain: ".nrp-nautilus.io"
+            placeholder: "my-hub"
+            help: "Your hub will be accessible at {value}.nrp-nautilus.io"
+
+      - title: Cluster Policies
+        fields:
+          - label: Culling enabled
+            path: cull.enabled
+            type: boolean
+            immutable: true
+          - label: Cull timeout (seconds)
+            path: cull.timeout
+            type: number
+            immutable: true
+          - label: Start timeout (seconds)
+            path: singleuser.startTimeout
+            type: number
+            immutable: true
+          - label: prePuller
+            path: prePuller.hook.enabled
+            type: boolean
+            immutable: true
+          - label: User scheduler
+            path: scheduling.userScheduler.enabled
+            type: boolean
+            immutable: true
+
+      - title: Single-User Resources
+        fields:
+          - label: CPU Limit
+            path: singleuser.cpu.limit
+            type: number
+            step: 0.5
+            placeholder: "3"
+            help: "Max CPU cores per user (applies to profiles without their own override)."
+          - label: CPU Guarantee
+            path: singleuser.cpu.guarantee
+            type: number
+            step: 0.5
+            placeholder: "1"
+          - label: Memory Limit
+            path: singleuser.memory.limit
+            type: text
+            placeholder: "10G"
+            help: "Max RAM per user (e.g. 4G, 16G)."
+          - label: Memory Guarantee
+            path: singleuser.memory.guarantee
+            type: text
+            placeholder: "4G"
+
+      - title: Single-User Storage
+        fields:
+          - label: Storage Size
+            path: singleuser.storage.capacity
+            type: text
+            default: 5Gi
+            help: "Persistent home directory size (e.g. 5Gi, 20Gi)."
