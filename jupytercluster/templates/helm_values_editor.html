@@ -33,6 +33,42 @@
     font-weight: normal;
     letter-spacing: 0.02em;
   }
+  /* ── Image radio picker ────────────────────────────────────────────── */
+  .image-radio-card {
+    cursor: pointer;
+    min-width: 150px;
+    max-width: 220px;
+    flex: 0 0 auto;
+    border-color: #dee2e6 !important;
+    transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+  }
+  .image-radio-card:hover {
+    border-color: #0d6efd !important;
+    box-shadow: 0 0 0 0.1rem rgba(13,110,253,.18);
+  }
+  .image-radio-card.selected {
+    border-color: #0d6efd !important;
+    background: #f0f5ff;
+    box-shadow: 0 0 0 0.18rem rgba(13,110,253,.28);
+  }
+  /* ── Resource tier picker ──────────────────────────────────────────── */
+  .resource-tier-card {
+    cursor: pointer;
+    min-width: 110px;
+    max-width: 160px;
+    flex: 0 0 auto;
+    border-color: #dee2e6 !important;
+    transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+  }
+  .resource-tier-card:hover {
+    border-color: #198754 !important;
+    box-shadow: 0 0 0 0.1rem rgba(25,135,84,.18);
+  }
+  .resource-tier-card.selected {
+    border-color: #198754 !important;
+    background: #f0faf4;
+    box-shadow: 0 0 0 0.18rem rgba(25,135,84,.28);
+  }
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
@@ -122,10 +158,10 @@
       const row = document.createElement('div');
       row.className = 'row';
 
-      (group.fields || []).forEach(field => {
+      (group.fields || []).forEach((field, fi) => {
         const col = document.createElement('div');
         col.className = 'col-md-6 mb-3';
-        col.dataset.fieldPath = field.path;
+        col.dataset.fieldPath = field.path || ('__picker__' + gi + '_' + fi);
 
         const isImmutable = field.immutable === true;
         if (isImmutable) col.classList.add('immutable-field');
@@ -135,10 +171,140 @@
           col.style.display = 'none';
         }
 
-        const inputId = 'field-' + field.path.replace(/[\.\d]/g, c => c === '.' ? '-' : c);
+        const inputId = 'field-' + (field.path || (gi + '-' + fi)).replace(/[\.\d]/g, c => c === '.' ? '-' : c);
         const disAttr = isImmutable ? ' disabled' : '';
         const lockBadge = isImmutable ? ' <span class="immutable-badge">&#128274; locked</span>' : '';
 
+        // ── image-radio ──────────────────────────────────────────────────
+        if (field.type === 'image-radio') {
+          col.className = 'col-12 mb-3';
+          const paths = field.paths || {};
+          const namePath = paths.name || 'singleuser.image.name';
+          const tagPath = paths.tag || 'singleuser.image.tag';
+          const opts = field.options || [];
+
+          let cards = opts.map((opt, idx) => `
+            <div class="image-radio-card card border-2" data-idx="${idx}">
+              <div class="card-body p-2">
+                <div class="fw-semibold small">${escHtml(opt.label)}</div>
+                ${opt.description ? `<div class="text-muted" style="font-size:.74em">${escHtml(opt.description)}</div>` : ''}
+                <div class="font-monospace mt-1" style="font-size:.68em;word-break:break-all;color:#6c757d">${escHtml(opt.name)}:${escHtml(opt.tag || 'latest')}</div>
+              </div>
+            </div>`).join('');
+
+          cards += `
+            <div class="image-radio-card card border-2" data-idx="custom">
+              <div class="card-body p-2">
+                <div class="fw-semibold small">Custom</div>
+                <div class="text-muted" style="font-size:.74em">Enter manually</div>
+              </div>
+            </div>`;
+
+          const helpHtml = field.help ? `<small class="form-text text-muted mt-1 d-block">${escHtml(field.help)}</small>` : '';
+
+          col.innerHTML = `
+            <label class="form-label fw-semibold">${escHtml(field.label)}${lockBadge}</label>
+            <div data-picker-type="image-radio"
+                 data-options="${escHtml(JSON.stringify(opts))}"
+                 data-name-path="${escHtml(namePath)}"
+                 data-tag-path="${escHtml(tagPath)}">
+              <div class="d-flex flex-wrap gap-2 mb-1">${cards}</div>
+              <div class="image-radio-custom mt-2" style="display:none">
+                <div class="row g-2">
+                  <div class="col-8">
+                    <input type="text" class="form-control form-control-sm"
+                           placeholder="Image name (e.g. quay.io/jupyter/scipy-notebook)"
+                           data-custom-key="name"${disAttr}>
+                  </div>
+                  <div class="col-4">
+                    <input type="text" class="form-control form-control-sm"
+                           placeholder="Tag (e.g. latest)"
+                           data-custom-key="tag"${disAttr}>
+                  </div>
+                </div>
+              </div>
+              <input type="hidden" data-path="${escHtml(namePath)}" data-picker-role="name">
+              <input type="hidden" data-path="${escHtml(tagPath)}" data-picker-role="tag">
+            </div>
+            ${helpHtml}`;
+          row.appendChild(col);
+          return;
+        }
+
+        // ── resource-picker ──────────────────────────────────────────────
+        if (field.type === 'resource-picker') {
+          col.className = 'col-12 mb-3';
+          const paths = field.paths || {};
+          const cpuLimitPath    = paths.cpu_limit    || 'singleuser.cpu.limit';
+          const cpuGuarPath     = paths.cpu_guarantee || 'singleuser.cpu.guarantee';
+          const memLimitPath    = paths.mem_limit    || 'singleuser.memory.limit';
+          const memGuarPath     = paths.mem_guarantee || 'singleuser.memory.guarantee';
+          const opts = field.options || [];
+          const pathsJson = JSON.stringify({
+            cpu_limit: cpuLimitPath, cpu_guarantee: cpuGuarPath,
+            mem_limit: memLimitPath, mem_guarantee: memGuarPath
+          });
+
+          let cards = opts.map((opt, idx) => `
+            <div class="resource-tier-card card border-2" data-idx="${idx}">
+              <div class="card-body p-2 text-center">
+                <div class="fw-semibold small">${escHtml(opt.label)}</div>
+                <div style="font-size:.72em;color:#6c757d">${escHtml(opt.description || (opt.cpu_limit + ' CPU · ' + opt.mem_limit + ' RAM'))}</div>
+                <div style="font-size:.68em;color:#adb5bd">${opt.cpu_limit} CPU / ${escHtml(String(opt.mem_limit))}</div>
+              </div>
+            </div>`).join('');
+
+          cards += `
+            <div class="resource-tier-card card border-2" data-idx="custom">
+              <div class="card-body p-2 text-center">
+                <div class="fw-semibold small">Custom</div>
+                <div style="font-size:.72em;color:#6c757d">Set manually</div>
+              </div>
+            </div>`;
+
+          const helpHtml = field.help ? `<small class="form-text text-muted mt-1 d-block">${escHtml(field.help)}</small>` : '';
+
+          col.innerHTML = `
+            <label class="form-label fw-semibold">${escHtml(field.label)}${lockBadge}</label>
+            <div data-picker-type="resource-picker"
+                 data-options="${escHtml(JSON.stringify(opts))}"
+                 data-paths="${escHtml(pathsJson)}">
+              <div class="d-flex flex-wrap gap-2 mb-1">${cards}</div>
+              <div class="resource-picker-custom mt-2" style="display:none">
+                <div class="row g-2">
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1">CPU Limit (cores)</label>
+                    <input type="number" step="0.1" min="0" class="form-control form-control-sm"
+                           placeholder="e.g. 2" data-custom-key="cpu_limit"${disAttr}>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1">CPU Guarantee</label>
+                    <input type="number" step="0.1" min="0" class="form-control form-control-sm"
+                           placeholder="e.g. 0.5" data-custom-key="cpu_guarantee"${disAttr}>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1">Memory Limit</label>
+                    <input type="text" class="form-control form-control-sm"
+                           placeholder="e.g. 4G" data-custom-key="mem_limit"${disAttr}>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label class="form-label small mb-1">Memory Guarantee</label>
+                    <input type="text" class="form-control form-control-sm"
+                           placeholder="e.g. 2G" data-custom-key="mem_guarantee"${disAttr}>
+                  </div>
+                </div>
+              </div>
+              <input type="hidden" data-path="${escHtml(cpuLimitPath)}"  data-picker-role="cpu_limit">
+              <input type="hidden" data-path="${escHtml(cpuGuarPath)}"   data-picker-role="cpu_guarantee">
+              <input type="hidden" data-path="${escHtml(memLimitPath)}"  data-picker-role="mem_limit">
+              <input type="hidden" data-path="${escHtml(memGuarPath)}"   data-picker-role="mem_guarantee">
+            </div>
+            ${helpHtml}`;
+          row.appendChild(col);
+          return;
+        }
+
+        // ── Standard field types ─────────────────────────────────────────
         let inputHtml;
 
         if (field.type === 'hostname') {
@@ -173,7 +339,6 @@
                      ${defChecked}${disAttr}>
               <label class="form-check-label" for="${inputId}">${escHtml(field.label)}</label>
             </div>`;
-          // For boolean, skip the outer label (it's inside the check div)
           col.innerHTML = inputHtml +
             (field.help ? `<small class="form-text text-muted">${escHtml(field.help)}</small>` : '');
           if (isImmutable) {
@@ -196,7 +361,6 @@
           ? `<label class="form-label" for="${inputId}">${escHtml(field.label)}${lockBadge}</label>`
           : '';
 
-        // For hostname fields, replace {value} in help text with a live-updating span
         let helpHtml = '';
         if (field.help) {
           if (field.type === 'hostname' && field.help.includes('{value}')) {
@@ -216,8 +380,9 @@
     });
 
     setupConditionalFields();
+    initPickers();
 
-    // Wire up live hostname preview in help text
+    // Wire up live hostname preview
     document.querySelectorAll('#simple-editor-pane [data-type="hostname"]').forEach(el => {
       const helpId = el.dataset.helpId;
       if (!helpId) return;
@@ -226,6 +391,128 @@
       const update = () => { span.textContent = el.value.trim() || '…'; };
       el.addEventListener('input', update);
       update();
+    });
+  }
+
+  // ── Picker initialisation ─────────────────────────────────────────────
+
+  function initPickers() {
+    // image-radio pickers
+    document.querySelectorAll('[data-picker-type="image-radio"]').forEach(picker => {
+      const opts = JSON.parse(picker.dataset.options || '[]');
+      const customDiv  = picker.querySelector('.image-radio-custom');
+      const nameInput  = picker.querySelector('[data-picker-role="name"]');
+      const tagInput   = picker.querySelector('[data-picker-role="tag"]');
+
+      function selectImageCard(idx) {
+        picker.querySelectorAll('.image-radio-card').forEach(c => c.classList.remove('selected'));
+        const card = picker.querySelector(`.image-radio-card[data-idx="${idx}"]`);
+        if (card) card.classList.add('selected');
+        if (idx === 'custom') {
+          customDiv.style.display = '';
+        } else {
+          customDiv.style.display = 'none';
+          const opt = opts[parseInt(idx)];
+          if (opt) {
+            nameInput.value = opt.name || '';
+            tagInput.value  = opt.tag  || 'latest';
+          }
+        }
+      }
+
+      picker.querySelectorAll('.image-radio-card').forEach(card => {
+        card.addEventListener('click', () => selectImageCard(card.dataset.idx));
+      });
+
+      customDiv.querySelector('[data-custom-key="name"]').addEventListener('input', e => {
+        nameInput.value = e.target.value.trim();
+      });
+      customDiv.querySelector('[data-custom-key="tag"]').addEventListener('input', e => {
+        tagInput.value = e.target.value.trim();
+      });
+
+      // Sync visual state when hidden inputs are updated (by populateFormFromValues)
+      function syncImageVisual() {
+        const name = nameInput.value;
+        const tag  = tagInput.value;
+        if (!name) return;
+        const idx = opts.findIndex(o =>
+          o.name === name && (o.tag || 'latest') === (tag || 'latest')
+        );
+        if (idx >= 0) {
+          selectImageCard(String(idx));
+        } else {
+          customDiv.querySelector('[data-custom-key="name"]').value = name;
+          customDiv.querySelector('[data-custom-key="tag"]').value  = tag;
+          selectImageCard('custom');
+        }
+      }
+      nameInput.addEventListener('change', syncImageVisual);
+    });
+
+    // resource-picker pickers
+    document.querySelectorAll('[data-picker-type="resource-picker"]').forEach(picker => {
+      const opts    = JSON.parse(picker.dataset.options || '[]');
+      const customDiv = picker.querySelector('.resource-picker-custom');
+      const roleKeys  = ['cpu_limit', 'cpu_guarantee', 'mem_limit', 'mem_guarantee'];
+      const getInput  = role => picker.querySelector(`[data-picker-role="${role}"]`);
+
+      function selectTierCard(idx) {
+        picker.querySelectorAll('.resource-tier-card').forEach(c => c.classList.remove('selected'));
+        const card = picker.querySelector(`.resource-tier-card[data-idx="${idx}"]`);
+        if (card) card.classList.add('selected');
+        if (idx === 'custom') {
+          customDiv.style.display = '';
+        } else {
+          customDiv.style.display = 'none';
+          const opt = opts[parseInt(idx)];
+          if (opt) {
+            roleKeys.forEach(key => {
+              const inp = getInput(key);
+              if (inp) inp.value = opt[key] != null ? String(opt[key]) : '';
+            });
+          }
+        }
+      }
+
+      picker.querySelectorAll('.resource-tier-card').forEach(card => {
+        card.addEventListener('click', () => selectTierCard(card.dataset.idx));
+      });
+
+      customDiv.querySelectorAll('[data-custom-key]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const hidden = getInput(inp.dataset.customKey);
+          if (hidden) hidden.value = inp.value.trim();
+        });
+      });
+
+      // Sync visual state when hidden inputs are updated (by populateFormFromValues)
+      function syncResourceVisual() {
+        const vals = {};
+        roleKeys.forEach(key => {
+          const inp = getInput(key);
+          vals[key] = inp ? inp.value : '';
+        });
+        if (!vals.cpu_limit && !vals.mem_limit) return;
+        const idx = opts.findIndex(o =>
+          String(o.cpu_limit    || '') === vals.cpu_limit &&
+          String(o.cpu_guarantee|| '') === vals.cpu_guarantee &&
+          String(o.mem_limit    || '') === vals.mem_limit &&
+          String(o.mem_guarantee|| '') === vals.mem_guarantee
+        );
+        if (idx >= 0) {
+          selectTierCard(String(idx));
+        } else {
+          roleKeys.forEach(key => {
+            const customInp = customDiv.querySelector(`[data-custom-key="${key}"]`);
+            if (customInp) customInp.value = vals[key];
+          });
+          selectTierCard('custom');
+        }
+      }
+      // Trigger on any hidden input change (fired by populateFormFromValues)
+      const firstHidden = getInput(roleKeys[0]);
+      if (firstHidden) firstHidden.addEventListener('change', syncResourceVisual);
     });
   }
 
@@ -259,7 +546,7 @@
   function buildValuesFromForm() {
     const values = {};
     document.querySelectorAll('#simple-editor-pane [data-path]').forEach(el => {
-      if (el.dataset.immutable === 'true') return; // server enforces these via fixed
+      if (el.dataset.immutable === 'true') return;
 
       const path = el.dataset.path;
       let value;
@@ -270,8 +557,6 @@
         if (!subdomain) return;
         const hostname = subdomain + domain;
         value = [hostname];
-        // Enable ingress and httpRoute only when a valid hostname is provided,
-        // so we never submit an empty host (which counts as a wildcard).
         setNestedValue(values, 'ingress.enabled', true);
         setNestedValue(values, 'httpRoute.enabled', true);
         try {
@@ -284,6 +569,7 @@
       } else if (el.type === 'number') {
         value = el.value.trim() !== '' ? parseFloat(el.value) : undefined;
       } else {
+        // covers type=hidden (picker outputs) and type=text
         value = el.value.trim() || undefined;
       }
 
@@ -296,7 +582,7 @@
 
   function populateFormFromValues(values) {
     document.querySelectorAll('#simple-editor-pane [data-path]').forEach(el => {
-      if (el.dataset.immutable === 'true') return; // don't overwrite immutable display
+      if (el.dataset.immutable === 'true') return;
 
       const v = getNestedValue(values, el.dataset.path);
       if (v == null) return;
@@ -380,7 +666,6 @@
       console.warn('Could not parse existing values YAML:', e);
       document.getElementById('values-yaml-editor').value = existingYaml;
     }
-    // Re-populate immutable fields after existing values (fixed always wins in display)
     populateImmutableFields();
   }
 })();

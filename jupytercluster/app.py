@@ -88,48 +88,89 @@ DEFAULT_HUB_VALUES_SCHEMA = {
             "title": "Single-User Image",
             "fields": [
                 {
-                    "label": "Image Name",
-                    "path": "singleuser.image.name",
-                    "type": "text",
-                    "placeholder": "quay.io/jupyter/scipy-notebook",
-                },
-                {
-                    "label": "Image Tag",
-                    "path": "singleuser.image.tag",
-                    "type": "text",
-                    "placeholder": "latest",
-                },
+                    "label": "Image",
+                    "type": "image-radio",
+                    "paths": {
+                        "name": "singleuser.image.name",
+                        "tag": "singleuser.image.tag",
+                    },
+                    "options": [
+                        {
+                            "label": "SciPy Notebook",
+                            "description": "NumPy · SciPy · Matplotlib · pandas",
+                            "name": "quay.io/jupyter/scipy-notebook",
+                            "tag": "latest",
+                        },
+                        {
+                            "label": "Data Science",
+                            "description": "Python + R + Julia",
+                            "name": "quay.io/jupyter/datascience-notebook",
+                            "tag": "latest",
+                        },
+                        {
+                            "label": "TensorFlow",
+                            "description": "TensorFlow · Keras",
+                            "name": "quay.io/jupyter/tensorflow-notebook",
+                            "tag": "latest",
+                        },
+                        {
+                            "label": "PyTorch",
+                            "description": "PyTorch · deep learning",
+                            "name": "quay.io/jupyter/pytorch-notebook",
+                            "tag": "latest",
+                        },
+                    ],
+                }
             ],
         },
         {
             "title": "Single-User Resources",
             "fields": [
                 {
-                    "label": "CPU Limit",
-                    "path": "singleuser.cpu.limit",
-                    "type": "number",
-                    "step": 0.1,
-                    "placeholder": "2",
-                },
-                {
-                    "label": "CPU Guarantee",
-                    "path": "singleuser.cpu.guarantee",
-                    "type": "number",
-                    "step": 0.1,
-                    "placeholder": "0.5",
-                },
-                {
-                    "label": "Memory Limit",
-                    "path": "singleuser.memory.limit",
-                    "type": "text",
-                    "placeholder": "4G",
-                },
-                {
-                    "label": "Memory Guarantee",
-                    "path": "singleuser.memory.guarantee",
-                    "type": "text",
-                    "placeholder": "1G",
-                },
+                    "label": "Resources",
+                    "type": "resource-picker",
+                    "paths": {
+                        "cpu_limit": "singleuser.cpu.limit",
+                        "cpu_guarantee": "singleuser.cpu.guarantee",
+                        "mem_limit": "singleuser.memory.limit",
+                        "mem_guarantee": "singleuser.memory.guarantee",
+                    },
+                    "options": [
+                        {
+                            "label": "Small",
+                            "description": "Light workloads",
+                            "cpu_limit": 1,
+                            "cpu_guarantee": 0.5,
+                            "mem_limit": "2G",
+                            "mem_guarantee": "1G",
+                        },
+                        {
+                            "label": "Medium",
+                            "description": "Standard analysis",
+                            "cpu_limit": 2,
+                            "cpu_guarantee": 1,
+                            "mem_limit": "4G",
+                            "mem_guarantee": "2G",
+                        },
+                        {
+                            "label": "Large",
+                            "description": "Heavy computation",
+                            "cpu_limit": 4,
+                            "cpu_guarantee": 2,
+                            "mem_limit": "8G",
+                            "mem_guarantee": "4G",
+                        },
+                        {
+                            "label": "XL",
+                            "description": "GPU-class jobs",
+                            "cpu_limit": 8,
+                            "cpu_guarantee": 4,
+                            "mem_limit": "16G",
+                            "mem_guarantee": "8G",
+                        },
+                    ],
+                    "help": "Limit is the hard cap; Guarantee is the reserved minimum.",
+                }
             ],
         },
         {
