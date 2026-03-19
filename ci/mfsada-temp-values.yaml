@@ -244,28 +244,87 @@ config:
             type: boolean
             immutable: true
 
+      - title: Default User Image
+        fields:
+          - label: Image
+            type: image-radio
+            paths:
+              name: singleuser.image.name
+              tag: singleuser.image.tag
+            help: "Default image for user servers. Individual users choose their profile (which can override this) when they start their server."
+            options:
+              - label: "Scipy (Python)"
+                description: "NumPy · SciPy · Matplotlib · pandas"
+                name: quay.io/jupyter/scipy-notebook
+                tag: "2024-04-22"
+              - label: "R"
+                description: "R + tidyverse + ggplot2"
+                name: quay.io/jupyter/r-notebook
+                tag: "2024-04-22"
+              - label: "Julia"
+                description: "Julia + Python"
+                name: quay.io/jupyter/julia-notebook
+                tag: "2024-04-22"
+              - label: "Datascience"
+                description: "Python + R + Julia"
+                name: quay.io/jupyter/datascience-notebook
+                tag: "2024-04-22"
+              - label: "TensorFlow (CUDA)"
+                description: "TensorFlow · Keras · GPU"
+                name: quay.io/jupyter/tensorflow-notebook
+                tag: "cuda-2024-04-22"
+              - label: "PyTorch (CUDA)"
+                description: "PyTorch · deep learning · GPU"
+                name: quay.io/jupyter/pytorch-notebook
+                tag: "cuda12-2024-04-22"
+              - label: "PySpark"
+                description: "Apache Spark + Python"
+                name: quay.io/jupyter/pyspark-notebook
+                tag: "2024-04-22"
+              - label: "B-Data Scipy (CUDA)"
+                description: "Python/Scipy · GPU (b-data)"
+                name: glcr.b-data.ch/jupyterlab/cuda/python/scipy
+                tag: "3"
+              - label: "B-Data R (CUDA)"
+                description: "R · GPU (b-data)"
+                name: glcr.b-data.ch/jupyterlab/cuda/r/base
+                tag: "4"
+
       - title: Single-User Resources
         fields:
-          - label: CPU Limit
-            path: singleuser.cpu.limit
-            type: number
-            step: 0.5
-            placeholder: "3"
-            help: "Max CPU cores per user (applies to profiles without their own override)."
-          - label: CPU Guarantee
-            path: singleuser.cpu.guarantee
-            type: number
-            step: 0.5
-            placeholder: "1"
-          - label: Memory Limit
-            path: singleuser.memory.limit
-            type: text
-            placeholder: "10G"
-            help: "Max RAM per user (e.g. 4G, 16G)."
-          - label: Memory Guarantee
-            path: singleuser.memory.guarantee
-            type: text
-            placeholder: "4G"
+          - label: Resources
+            type: resource-picker
+            paths:
+              cpu_limit: singleuser.cpu.limit
+              cpu_guarantee: singleuser.cpu.guarantee
+              mem_limit: singleuser.memory.limit
+              mem_guarantee: singleuser.memory.guarantee
+            help: "Applies to profiles that do not set their own resource override. Limit is the hard cap; Guarantee is the reserved minimum."
+            options:
+              - label: "Small"
+                description: "Light workloads"
+                cpu_limit: 1
+                cpu_guarantee: 0.5
+                mem_limit: "4G"
+                mem_guarantee: "2G"
+              - label: "Medium"
+                description: "Standard analysis"
+                cpu_limit: 3
+                cpu_guarantee: 1
+                mem_limit: "10G"
+                mem_guarantee: "4G"
+              - label: "Large"
+                description: "Heavy computation"
+                cpu_limit: 6
+                cpu_guarantee: 2
+                mem_limit: "20G"
+                mem_guarantee: "8G"
+              - label: "XL"
+                description: "GPU / big-data jobs"
+                cpu_limit: 12
+                cpu_guarantee: 4
+                mem_limit: "40G"
+                mem_guarantee: "16G"
 
       - title: Single-User Storage
         fields:
