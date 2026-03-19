@@ -128,6 +128,57 @@ config:
   # JSON schema for the hub values GUI editor.
   # Leave empty to use the built-in default schema.
   # Provide a JSON object to customise the editor for your cluster.
+  #
+  # Supported field types in groups[].fields[]:
+  #   text, number, boolean, select, hostname  — standard single-value inputs
+  #   image-radio   — clickable image cards; requires paths.name / paths.tag and options[]
+  #                   Each option: { label, description, name, tag }
+  #                   A "Custom" card is always appended for free-text entry.
+  #   resource-picker — preset resource-tier cards; requires paths.{cpu_limit,
+  #                   cpu_guarantee, mem_limit, mem_guarantee} and options[]
+  #                   Each option: { label, description, cpu_limit, cpu_guarantee,
+  #                                  mem_limit, mem_guarantee }
+  #                   A "Custom" card expands individual inputs.
+  #
+  # Example — restrict images and offer three resource tiers:
+  # hubValuesSchema:
+  #   groups:
+  #     - title: "Single-User Image"
+  #       fields:
+  #         - label: "Image"
+  #           type: image-radio
+  #           paths:
+  #             name: singleuser.image.name
+  #             tag:  singleuser.image.tag
+  #           options:
+  #             - label: "SciPy Notebook"
+  #               description: "NumPy · SciPy · Matplotlib"
+  #               name: quay.io/jupyter/scipy-notebook
+  #               tag:  latest
+  #             - label: "PyTorch"
+  #               description: "PyTorch + deep learning"
+  #               name: quay.io/jupyter/pytorch-notebook
+  #               tag:  latest
+  #     - title: "Resources"
+  #       fields:
+  #         - label: "Resources"
+  #           type: resource-picker
+  #           paths:
+  #             cpu_limit:    singleuser.cpu.limit
+  #             cpu_guarantee: singleuser.cpu.guarantee
+  #             mem_limit:    singleuser.memory.limit
+  #             mem_guarantee: singleuser.memory.guarantee
+  #           options:
+  #             - label: Small
+  #               cpu_limit: 1
+  #               cpu_guarantee: 0.5
+  #               mem_limit: "2G"
+  #               mem_guarantee: "1G"
+  #             - label: Large
+  #               cpu_limit: 4
+  #               cpu_guarantee: 2
+  #               mem_limit: "8G"
+  #               mem_guarantee: "4G"
   hubValuesSchema: {}
   # Allow JupyterCluster to create new Kubernetes namespaces for hubs.
   # Set to false to restrict JupyterCluster to only use pre-existing namespaces.
